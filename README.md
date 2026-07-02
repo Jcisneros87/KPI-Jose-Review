@@ -35,7 +35,7 @@ Open <http://localhost:8080>, then either:
 | KPI / Data Processing Engine (pure JS, UI-free) | `src/engines/kpiEngine.js` |
 | Goal Engine — versioned, effective-dated goals (history preserved) | `src/engines/goalEngine.js` |
 | Employee Analytics — balanced 0–100 performance indexes, coaching/recognition flags | `src/engines/employeeAnalytics.js` |
-| PowerPoint Export — native editable Office charts w/ embedded worksheets (PptxGenJS) | `src/exports/pptxExport.js` |
+| PowerPoint Export — single executive slide: native editable combo chart (4-column embedded worksheet) + KPI cards as native shapes (PptxGenJS) | `src/exports/pptxExport.js` |
 | Goal Management page (role-gated, audited) | `src/dashboards/goals.js` |
 | Audit Log (imports, goal changes, exports — localStorage) | `src/services/auditService.js` |
 | Role-based access (Admin / Manager / Analyst / Executive / Auditor) | `config/application-settings.json` |

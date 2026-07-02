@@ -243,18 +243,18 @@ export function renderCtrDashboard(container, state) {
         btn.textContent = 'Generating…';
         try {
           await exportCtrPptx(model, state.config);
-          auditLog('EXPORT_PPTX', 'CTR Dashboard', { user: state.role });
-          notifyToast('PowerPoint export complete — charts are natively editable.', 'success');
+          auditLog('EXPORT_PPTX', 'CTR Performance Trend slide', { user: state.role });
+          notifyToast('Executive slide exported — the chart and KPI cards are natively editable in PowerPoint.', 'success');
         } catch (err) {
           console.error(err);
           notifyToast(`PowerPoint export failed: ${err.message}`, 'error');
-          auditLog('EXPORT_PPTX_FAILED', 'CTR Dashboard', { user: state.role, newValue: err.message });
+          auditLog('EXPORT_PPTX_FAILED', 'CTR Performance Trend slide', { user: state.role, newValue: err.message });
         } finally {
           btn.disabled = false;
-          btn.textContent = '⬇ Export Editable PowerPoint';
+          btn.textContent = '⬇ Export Executive Slide (PowerPoint)';
         }
       },
-    }, '⬇ Export Editable PowerPoint'));
+    }, '⬇ Export Executive Slide (PowerPoint)'));
     actions.append(el('button', {
       class: 'btn-ghost',
       onclick: () => {
