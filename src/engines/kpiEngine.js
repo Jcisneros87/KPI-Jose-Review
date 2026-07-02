@@ -227,7 +227,7 @@ export function aggregateMonthly(records, months) {
     month: k,
     label: monthLabel(k),
     created: 0, queued: 0, submitted: 0, accepted: 0, acceptedByStart: 0,
-    excluded: 0, pending: 0, queueFailed: 0, other: 0, completed: 0,
+    excluded: 0, pending: 0, queueFailed: 0, other: 0, completedFilings: 0,
     _startToQueue: [], _queueToSubmit: [], _submitToAccept: [], _startToAccept: [], _effDays: [],
     _onTime: 0, _onTimeDen: 0,
   }]));
@@ -259,13 +259,24 @@ export function aggregateMonthly(records, months) {
         if (r.onTime) aBucket._onTime++;
       }
     }
-    // "Completed" cohort: Accepted Date, falling back to Submitted Date when
-    // acceptance is still pending (Performance Trend definition).
-    const completionDate = r.acceptedDate || r.submittedDate;
+    // "Completed filings" cohort (Performance Trend): accepted records bucket
+    // by Accepted Date (falling back to Submitted Date only if acceptance has
+    // no date); pending records that reached FinCEN bucket by Submitted Date.
+    // Excluded / queue-failed / other rows never count as completed filings —
+    // the date fallback must not resurrect non-filings that happen to carry a
+    // Submitted Date.
+    let completionDate = null;
+    let effDays = null;
+    if (r.statusCategory === 'accepted') {
+      completionDate = r.acceptedDate || r.submittedDate;
+      effDays = r.dStartToAccept ?? r.dStartToSubmit;
+    } else if (r.statusCategory === 'pending' && r.submittedDate) {
+      completionDate = r.submittedDate;
+      effDays = r.dStartToSubmit;
+    }
     const cBucket = byMonth.get(monthKey(completionDate));
     if (cBucket) {
-      cBucket.completed++;
-      const effDays = r.dStartToAccept ?? r.dStartToSubmit;
+      cBucket.completedFilings++;
       if (effDays != null) cBucket._effDays.push(effDays);
     }
   }
@@ -284,7 +295,9 @@ export function aggregateMonthly(records, months) {
       pending: b.pending,
       queueFailed: b.queueFailed,
       other: b.other,
-      completed: b.completed,
+      // Distinct from employee-analytics "completed" (status-driven
+      // accepted+excluded): this is the filing-event cohort defined above.
+      completedFilings: b.completedFilings,
       avgFilingDaysEff: avg(b._effDays),
       avgStartToQueue: avg(b._startToQueue),
       avgQueueToSubmit: avg(b._queueToSubmit),

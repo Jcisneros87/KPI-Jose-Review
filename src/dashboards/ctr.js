@@ -68,13 +68,13 @@ export function renderCtrDashboard(container, state) {
     direction: { up: false, label: 'Fewer filing days is better' },
     option: performanceTrend({
       months: labels,
-      volume: { color: S.completedVolume, data: m.map((x) => x.completed) },
+      volume: { color: S.completedVolume, data: m.map((x) => x.completedFilings) },
       avgDays: { color: S.avgFilingDays, data: m.map((x) => x.avgFilingDaysEff) },
       targetDays: g.regulatoryThresholdDays,
     }),
     tableModel: {
       headers: ['Month', 'Avg Filing Days', 'Target', 'CTRs Completed'],
-      rows: m.map((x) => [x.label, x.avgFilingDaysEff, g.regulatoryThresholdDays, x.completed]),
+      rows: m.map((x) => [x.label, x.avgFilingDaysEff, g.regulatoryThresholdDays, x.completedFilings]),
     },
   }));
   perfSection.append(el('div', { class: 'perf-cards' },

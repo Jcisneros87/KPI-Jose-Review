@@ -182,22 +182,25 @@ test('SAR workflow starts at Date of Determination; Queued Date is optional', ()
 
 // ---------------------------------------------------------------- performance trend
 
-test('completed cohort uses Accepted Date with Submitted fallback (performance trend)', () => {
+test('completed-filings cohort: Accepted Date, pending-Submitted fallback, non-filings excluded (codex fix)', () => {
   const rows = [
     benchmarkCtrRow,                                                                        // accepted 01/06
     { ...benchmarkCtrRow, 'Report Number': 'CTR-SUB', 'Status': 'Open', 'Accepted Date': '', 'Submitted Date': '02/03/2026' },
     { ...benchmarkCtrRow, 'Report Number': 'CTR-NONE', 'Status': 'Open', 'Accepted Date': '', 'Submitted Date': '', 'Queued Date': '' },
+    // Excluded/queue-failed rows carrying a Submitted Date must NOT count as completed filings
+    { ...benchmarkCtrRow, 'Report Number': 'CTR-EXC', 'Status': 'Excluded', 'Accepted Date': '', 'Submitted Date': '02/10/2026' },
+    { ...benchmarkCtrRow, 'Report Number': 'CTR-QF', 'Queue Failed': 'Yes', 'Accepted Date': '', 'Submitted Date': '02/12/2026' },
   ];
   const { records } = normalizeRecords(rows, 'ctr', mappings, statusMappings);
   const monthly = aggregateMonthly(records, ['2026-01', '2026-02']);
-  assert.equal(monthly[0].completed, 1);            // accepted in Jan
-  assert.equal(monthly[1].completed, 1);            // submitted-only lands in Feb
+  assert.equal(monthly[0].completedFilings, 1);     // accepted in Jan
+  assert.equal(monthly[1].completedFilings, 1);     // pending submitted-only lands in Feb; excluded/QF ignored
   assert.equal(monthly[0].avgFilingDaysEff, 4);     // Creation→Accepted
-  assert.equal(monthly[1].avgFilingDaysEff, 32);    // fallback Creation→Submitted (01/02→02/03)
+  assert.equal(monthly[1].avgFilingDaysEff, 32);    // fallback Creation→Submitted (01/02→02/03), no pollution from non-filings
 });
 
 test('performance KPI cards: monthly %, MoM variance, 12-month historical', () => {
-  const mk = (avg) => ({ avgFilingDaysEff: avg, completed: 10 });
+  const mk = (avg) => ({ avgFilingDaysEff: avg, completedFilings: 10 });
   // 13 months: twelve at 12 days, current at 13.8 days, target 15
   const monthly = [...Array.from({ length: 12 }, () => mk(12)), mk(13.8)];
   const perf = computePerformanceKpis(monthly, 15);

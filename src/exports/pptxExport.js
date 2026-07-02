@@ -144,7 +144,7 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
     s.addChart([
       {
         type: pptx.charts.BAR,
-        data: [series('CTRs Completed', labels, m.map((x) => x.completed))],
+        data: [series('CTRs Completed', labels, m.map((x) => x.completedFilings))],
         options: { barDir: 'col', barGrouping: 'clustered', chartColors: [hex(S.completedVolume)] },
       },
       {
@@ -184,7 +184,7 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
       },
       { title: 'Avg Filing Days (Month)', value: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} d` },
       { title: 'Regulatory Target', value: `${g.regulatoryThresholdDays} Days` },
-      { title: 'CTRs Completed (Month)', value: m[m.length - 1]?.completed ?? '—' },
+      { title: 'CTRs Completed (Month)', value: m[m.length - 1]?.completedFilings ?? '—' },
     ]);
   }
 
