@@ -42,6 +42,10 @@ async function importFile(file, type) {
     if (result.duplicates) msg += ` ${result.duplicates} duplicate report number(s) skipped.`;
     if (result.blankRows) msg += ` ${result.blankRows} blank row(s) ignored.`;
     notifyToast(msg, 'success', 7000);
+    if (result.errors?.length) {
+      console.warn(`[import:${type}] blocked rows:`, result.errors);
+      notifyToast(`${result.errors.length} row(s) blocked — missing required fields. They are excluded from KPI calculations until corrected (details in console).`, 'warning', 10000);
+    }
     if (result.invalidDates) notifyToast(`${result.invalidDates} value(s) could not be parsed as dates — affected metrics treat them as blank.`, 'warning', 9000);
     if (result.extraHeaders.length) notifyToast(`Ignored unused columns: ${result.extraHeaders.join(', ')}`, 'info', 6000);
   } catch (err) {

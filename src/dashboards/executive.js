@@ -269,9 +269,9 @@ function goalRow(label, model) {
 
 function leaderboard(stats, access) {
   const cols = access === 'summary'
-    ? [['name', 'Analyst'], ['volume', 'Reports Completed'], ['onTimePct', 'On-Time %']]
+    ? [['name', 'Analyst'], ['completed', 'Reports Completed'], ['onTimePct', 'On-Time %']]
     : [
-      ['name', 'Analyst'], ['volume', 'Reports Completed'], ['avgFilingDays', 'Avg Processing (days)'],
+      ['name', 'Analyst'], ['completed', 'Reports Completed'], ['avgFilingDays', 'Avg Processing (days)'],
       ['onTimePct', 'On-Time %'], ['productivityIndex', 'Productivity'], ['workloadIndex', 'Workload'],
       ['overallIndex', 'Overall Index'],
     ];

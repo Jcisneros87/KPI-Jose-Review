@@ -73,7 +73,13 @@ export function computeEmployeeStats({ ctrRecords = [], sarRecords = [], goalsCo
   const stats = [...owners.values()].filter((o) => o.name !== '(unassigned)' || o.ctrCount + o.sarCount > 0);
   if (!stats.length) return [];
 
-  const maxVolume = Math.max(...stats.map((o) => o.ctrCount + o.sarCount), 1);
+  // Workload weighting by work-type mix (SRS 7.7): SARs — especially
+  // Continuing Activity reviews — carry more effort than CTRs.
+  const ww = { ctr: 1, sarInitial: 3, sarContinuing: 2, ...(scoring?.workloadWeights || {}) };
+  const weighted = (o) => o.ctrCount * ww.ctr + o.sarInitial * ww.sarInitial + o.sarContinuing * ww.sarContinuing;
+
+  const maxCompleted = Math.max(...stats.map((o) => o.completed), 1);
+  const maxWeighted = Math.max(...stats.map(weighted), 1);
   const totalVolume = stats.reduce((a, o) => a + o.ctrCount + o.sarCount, 0);
 
   for (const o of stats) {
@@ -88,8 +94,11 @@ export function computeEmployeeStats({ ctrRecords = [], sarRecords = [], goalsCo
     o.acceptedPct = o.completed ? round1((o.accepted / o.completed) * 100) : null;
     o.volumeSharePct = round1((o.volume / totalVolume) * 100);
 
-    // Component indexes (0–100)
-    o.productivityIndex = round1(clamp((o.volume / maxVolume) * 100));
+    // Component indexes (0–100).
+    // Productivity rewards *completed* work (SRS 7.4 — "CTRs completed,
+    // SARs completed"), not assigned rows; workload reflects assigned
+    // volume weighted by work-type mix.
+    o.productivityIndex = round1(clamp((o.completed / maxCompleted) * 100));
     const tCtr = timelinessScore(avg(o._ctrDays), ctrGoal.internalTargetDays, ctrGoal.regulatoryThresholdDays);
     const tSar = timelinessScore(avg(o._sarDays), sarGoal.internalTargetDays, sarGoal.regulatoryThresholdDays);
     const tParts = [];
@@ -99,7 +108,7 @@ export function computeEmployeeStats({ ctrRecords = [], sarRecords = [], goalsCo
     o.timelinessIndex = tW ? round1(tParts.reduce((a, p) => a + p.score * p.w, 0) / tW) : null;
     o.complianceIndex = o.onTimePct;
     o.qualityIndex = o.acceptedPct == null ? null : round1(clamp(o.acceptedPct * (1 - (o.queueFailRatePct || 0) / 100)));
-    o.workloadIndex = round1(clamp((o.volume / maxVolume) * 100));
+    o.workloadIndex = round1(clamp((weighted(o) / maxWeighted) * 100));
 
     const components = [
       ['productivity', o.productivityIndex],

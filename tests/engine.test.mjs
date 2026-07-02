@@ -53,6 +53,15 @@ test('date parsing handles Verafin MM/DD/YYYY and ISO formats', () => {
   assert.equal(parseDate('not a date'), null);
 });
 
+test('invalid calendar dates are rejected, not rolled over (codex fix)', () => {
+  assert.equal(parseDate('02/31/2026'), null);
+  assert.equal(parseDate('2026-02-31'), null);
+  assert.equal(parseDate('13/01/2026'), null);
+  assert.equal(parseDate('00/10/2026'), null);
+  assert.equal(monthKey(parseDate('02/29/2024')), '2024-02'); // real leap day still parses
+  assert.equal(parseDate('02/29/2026'), null);                // non-leap year
+});
+
 test('number and boolean parsing', () => {
   assert.equal(parseNumber('$12,500.50'), 12500.5);
   assert.equal(parseNumber(''), null);
@@ -131,6 +140,19 @@ test('duplicate report numbers are skipped; blank rows ignored (SRS 11.8)', () =
   assert.equal(blankRows, 1);
 });
 
+test('rows missing mandatory fields are blocked from KPI models (codex fix)', () => {
+  const rows = [
+    benchmarkCtrRow,
+    { ...benchmarkCtrRow, 'Report Number': 'CTR-3', 'Creation Date': '' },  // no workflow anchor
+    { ...benchmarkCtrRow, 'Report Number': '' },                            // no report number
+  ];
+  const { records, errors } = normalizeRecords(rows, 'ctr', mappings, statusMappings);
+  assert.equal(records.length, 1);
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /Creation Date/);
+  assert.match(errors[1], /Report Number/);
+});
+
 test('missing required header is detected (SRS 12.16 acceptance test)', () => {
   const headers = mappings.ctr.required.filter((h) => h !== 'Accepted Date');
   const check = validateHeaders(headers, 'ctr', mappings);
@@ -178,6 +200,31 @@ test('evaluate returns variance and status', () => {
   assert.equal(e.status, 'green');
 });
 
+test('no goal version is active before the first effective date (codex fix)', () => {
+  const cfg = { versions: [{ version: 1, effectiveDate: '2025-01-01', ctr: {}, sar: {} }] };
+  assert.equal(activeGoalVersion(cfg, '2024-12'), null);
+  assert.equal(activeGoalVersion(cfg, '2025-01').version, 1);
+});
+
+test('expired and disabled goal versions are not selected (codex fix)', () => {
+  const cfg = {
+    versions: [
+      { version: 1, effectiveDate: '2025-01-01', expirationDate: '2025-12-31', ctr: {}, sar: {} },
+      { version: 2, effectiveDate: '2026-02-01', status: 'disabled', ctr: {}, sar: {} },
+    ],
+  };
+  assert.equal(activeGoalVersion(cfg, '2025-06').version, 1);
+  assert.equal(activeGoalVersion(cfg, '2026-01'), null);  // v1 expired, v2 not yet effective
+  assert.equal(activeGoalVersion(cfg, '2026-03'), null);  // v2 disabled
+});
+
+test('classify returns info (not a compliance color) when goal config is missing (codex fix)', () => {
+  assert.equal(classify(1, null, null), 'info');
+  assert.equal(classify(1, undefined, undefined), 'info');
+  assert.equal(classify(null, 5, 15), 'info');
+  assert.equal(classify(7, 5, null), 'yellow'); // target without threshold still classifies
+});
+
 // ---------------------------------------------------------------- sample CSV integration
 
 function loadSample(type) {
@@ -220,6 +267,25 @@ test('filters: owner + month narrow the record set consistently', () => {
   assert.ok(filtered.length > 0);
   assert.ok(filtered.every((r) => r.owner === owner));
   assert.ok(filtered.every((r) => monthKey(r.workflowStart) === month));
+});
+
+test('productivity rewards completed work, not assigned rows (codex fix)', () => {
+  const mk = (rn, owner, status, extra = {}) => ({
+    ...benchmarkCtrRow, 'Report Number': rn, 'Assigned Owner Name': owner, 'Status': status, ...extra,
+  });
+  const rows = [
+    mk('P1', 'Pending Pat', 'Open', { 'Queued Date': '', 'Submitted Date': '', 'Accepted Date': '' }),
+    mk('P2', 'Pending Pat', 'Open', { 'Queued Date': '', 'Submitted Date': '', 'Accepted Date': '' }),
+    mk('P3', 'Pending Pat', 'Open', { 'Queued Date': '', 'Submitted Date': '', 'Accepted Date': '' }),
+    mk('A1', 'Finisher Fran', 'Accepted'),
+  ];
+  const { records } = normalizeRecords(rows, 'ctr', mappings, statusMappings);
+  const stats = computeEmployeeStats({ ctrRecords: records, sarRecords: [], goalsConfig, scoring: goalsConfig.scoring });
+  const pat = stats.find((s) => s.name === 'Pending Pat');
+  const fran = stats.find((s) => s.name === 'Finisher Fran');
+  assert.equal(pat.productivityIndex, 0, 'pending-only analyst must not score productivity');
+  assert.equal(fran.productivityIndex, 100);
+  assert.ok(pat.workloadIndex > pat.productivityIndex, 'workload (assigned) is distinct from productivity (completed)');
 });
 
 test('employee analytics produce reproducible 0–100 indexes (SRS 7.14)', () => {

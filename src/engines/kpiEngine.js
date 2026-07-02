@@ -12,14 +12,21 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 // ---------------------------------------------------------------- parsing
 
+// Rejects rolled-over calendar dates (e.g. 02/31) instead of letting the
+// Date constructor silently shift them into the next month.
+function calendarDate(y, mo, d) {
+  const dt = new Date(y, mo - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d ? dt : null;
+}
+
 export function parseDate(value) {
   if (value == null) return null;
   const s = String(value).trim();
   if (!s) return null;
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  if (m) return calendarDate(+m[1], +m[2], +m[3]);
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m) return new Date(+m[3], +m[1] - 1, +m[2]);
+  if (m) return calendarDate(+m[3], +m[1], +m[2]);
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -119,8 +126,10 @@ export function computeDurations(rec, type) {
 export function normalizeRecords(rows, type, mappings, statusMappings) {
   const spec = mappings[type];
   const fields = Object.entries(spec.fields);
+  const anchorHeader = fields.find(([, def]) => def.key === spec.anchorField)?.[0] || spec.anchorField;
   const records = [];
   const warnings = [];
+  const errors = []; // rows blocked from KPI calculation (SRS 11.8)
   const seen = new Set();
   let blankRows = 0;
   let duplicates = 0;
@@ -149,7 +158,17 @@ export function normalizeRecords(rows, type, mappings, statusMappings) {
         rec[def.key] = raw == null ? '' : String(raw).trim();
       }
     }
-    if (statusMappings.skipDuplicateReportNumbers && rec.reportNumber) {
+    // Mandatory per-row fields: without a Report Number and the workflow
+    // anchor date the record cannot enter KPI models (SRS 11.8 — missing
+    // required fields prevent KPI calculations until corrected).
+    const missing = [];
+    if (!rec.reportNumber) missing.push('Report Number');
+    if (!rec[spec.anchorField]) missing.push(anchorHeader);
+    if (missing.length) {
+      errors.push(`Row ${i + 2}: missing required ${missing.join(' and ')} — record excluded until corrected`);
+      return;
+    }
+    if (statusMappings.skipDuplicateReportNumbers) {
       if (seen.has(rec.reportNumber)) {
         duplicates++;
         return;
@@ -158,13 +177,10 @@ export function normalizeRecords(rows, type, mappings, statusMappings) {
     }
     rec.statusCategory = classifyStatus(rec, statusMappings);
     computeDurations(rec, type);
-    if (!rec.workflowStart) {
-      warnings.push(`Row ${i + 2}: missing workflow start date — excluded from monthly trends`);
-    }
     records.push(rec);
   });
 
-  return { records, warnings, blankRows, duplicates, invalidDates };
+  return { records, warnings, errors, blankRows, duplicates, invalidDates };
 }
 
 // ---------------------------------------------------------------- filtering

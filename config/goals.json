@@ -28,6 +28,11 @@
       "quality": 0.2,
       "workload": 0.1
     },
+    "workloadWeights": {
+      "ctr": 1,
+      "sarInitial": 3,
+      "sarContinuing": 2
+    },
     "coaching": {
       "minCompliancePct": 85,
       "maxQueueFailRatePct": 5

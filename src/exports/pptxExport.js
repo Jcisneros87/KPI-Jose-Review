@@ -79,7 +79,11 @@ function baseChartOpts(theme) {
   };
 }
 
+// Count series coerce blanks to 0; measure/line series keep nulls so a
+// missing month exports as an empty worksheet cell, not a false 0 (SRS 9.6).
 const series = (name, labels, values) => ({ name, labels, values: values.map((v) => (v == null ? 0 : v)) });
+const lineSeries = (name, labels, values) => ({ name, labels, values: values.map((v) => (v == null ? null : v)) });
+const constSeries = (name, labels, value) => ({ name, labels, values: labels.map(() => value) });
 
 /**
  * Build the CTR deck from a precomputed dashboard model:
@@ -101,7 +105,14 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
   const cards = [
     { title: 'CTRs Accepted (Month)', value: model.summary.accepted },
     { title: 'CTRs Excluded (Month)', value: model.summary.excluded },
-    { title: 'Avg Filing Time', value: model.summary.avgFilingDays == null ? '—' : `${model.summary.avgFilingDays} d`, color: model.summary.avgFilingDays <= g.internalTargetDays ? theme.brand.success : model.summary.avgFilingDays <= g.regulatoryThresholdDays ? theme.brand.warning : theme.brand.danger },
+    {
+      title: 'Avg Filing Time',
+      value: model.summary.avgFilingDays == null ? '—' : `${model.summary.avgFilingDays} d`,
+      color: model.summary.avgFilingDays == null ? theme.brand.info
+        : model.summary.avgFilingDays <= g.internalTargetDays ? theme.brand.success
+        : model.summary.avgFilingDays <= g.regulatoryThresholdDays ? theme.brand.warning
+        : theme.brand.danger,
+    },
     { title: 'On-Time Filing %', value: model.summary.onTimePct == null ? '—' : `${model.summary.onTimePct}%` },
     { title: 'Internal Target', value: `${g.internalTargetDays} Days` },
     { title: 'Regulatory Threshold', value: `${g.regulatoryThresholdDays} Days` },
@@ -154,8 +165,15 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
       },
       {
         type: pptx.charts.LINE,
-        data: [series('On-Time Filing %', labels, m.map((x) => x.onTimePct))],
-        options: { chartColors: [hex(S.onTimePct)], secondaryValAxis: true, secondaryCatAxis: true, lineSize: 2, lineSmooth: false },
+        data: [
+          lineSeries('On-Time Filing %', labels, m.map((x) => x.onTimePct)),
+          constSeries('Goal 100%', labels, 100),
+        ],
+        options: {
+          chartColors: [hex(S.onTimePct), hex(theme.goalLines?.internalTarget || theme.brand.success)],
+          secondaryValAxis: true, secondaryCatAxis: true, lineSize: 2, lineSmooth: false,
+          lineDataSymbol: 'circle',
+        },
       },
     ], {
       ...baseChartOpts(theme),
@@ -184,13 +202,17 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
       {
         type: pptx.charts.LINE,
         data: [
-          series('Creation → Queue', labels, m.map((x) => x.avgStartToQueue)),
-          series('Queue → Submitted', labels, m.map((x) => x.avgQueueToSubmit)),
-          series('Submitted → Accepted', labels, m.map((x) => x.avgSubmitToAccept)),
-          series('Creation → Accepted', labels, m.map((x) => x.avgFilingDays)),
+          lineSeries('Creation → Queue', labels, m.map((x) => x.avgStartToQueue)),
+          lineSeries('Queue → Submitted', labels, m.map((x) => x.avgQueueToSubmit)),
+          lineSeries('Submitted → Accepted', labels, m.map((x) => x.avgSubmitToAccept)),
+          lineSeries('Creation → Accepted', labels, m.map((x) => x.avgFilingDays)),
+          constSeries(`Goal ${g.timelineGoalLineDays ?? 2} Days`, labels, g.timelineGoalLineDays ?? 2),
         ],
         options: {
-          chartColors: [S.durationStartToQueue, S.durationQueueToSubmit, S.durationSubmitToAccept, S.durationStartToAccept].map(hex),
+          chartColors: [
+            ...[S.durationStartToQueue, S.durationQueueToSubmit, S.durationSubmitToAccept, S.durationStartToAccept].map(hex),
+            hex(theme.goalLines?.internalTarget || theme.brand.success),
+          ],
           secondaryValAxis: true, secondaryCatAxis: true, lineSize: 2, lineSmooth: false,
         },
       },

@@ -34,11 +34,19 @@ export async function importCsv({ file, text, type, config }) {
       headerCheck,
     };
   }
-  const { records, warnings, blankRows, duplicates, invalidDates } = normalizeRecords(
+  const { records, warnings, errors, blankRows, duplicates, invalidDates } = normalizeRecords(
     parsed.data, type, config.headerMappings, config.statusMappings
   );
   if (!records.length) {
-    return { ok: false, type, fileName: file?.name || 'inline', error: 'The file contains no data rows.', headerCheck };
+    return {
+      ok: false,
+      type,
+      fileName: file?.name || 'inline',
+      error: errors.length
+        ? `All rows are missing required fields (e.g. ${errors[0]}).`
+        : 'The file contains no data rows.',
+      headerCheck,
+    };
   }
   return {
     ok: true,
@@ -48,6 +56,7 @@ export async function importCsv({ file, text, type, config }) {
     elapsedMs: Math.round(performance.now() - started),
     records,
     warnings,
+    errors,
     blankRows,
     duplicates,
     invalidDates,
