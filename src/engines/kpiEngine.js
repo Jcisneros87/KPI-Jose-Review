@@ -329,31 +329,35 @@ export function summarize(records) {
 }
 
 /**
- * Performance Trend KPI cards (executive enhancement):
- *  - Monthly Performance: current avg filing days as a % of the target
- *    (92% = using 92% of the allowed time). Green ≤95%, amber ≤100%, red >100%.
- *  - MoM Variance: % change in avg days vs prior month (down = improving).
- *  - 12-Month Historical: rolling average of the 12 months before the current
- *    one, as a % of target.
- * Expects the monthly array from aggregateMonthly() (13 rolling months) and
- * the target in days.
+ * Performance Trend KPI cards (template-driven reporting revision):
+ * measured against the INTERNAL goal (5 days), with the regulatory deadline
+ * as the outer compliance bound.
+ *  - Monthly Performance: current avg filing days + % of internal goal
+ *    consumed (76% = 3.8 of 5 allowed days). Green ≤ goal, amber ≤
+ *    regulatory deadline, red beyond it.
+ *  - MoM Variance: % change and absolute day delta vs prior month
+ *    (down = improving).
+ *  - 12-Month Historical: rolling average of the 12 months before the
+ *    current one, in days and as % of goal.
+ * Accepts (monthly, goalDays, regulatoryDays); the legacy 2-arg call
+ * treats the second argument as both bounds.
  */
-export function computePerformanceKpis(monthly, targetDays) {
-  const ratioStatus = (pctOfTarget) =>
-    pctOfTarget == null ? 'info' : pctOfTarget <= 95 ? 'green' : pctOfTarget <= 100 ? 'yellow' : 'red';
-  const pctOf = (days) =>
-    days == null || !targetDays ? null : Math.round((days / targetDays) * 100);
+export function computePerformanceKpis(monthly, goalDays, regulatoryDays = goalDays) {
+  const dayStatus = (days) =>
+    days == null ? 'info' : days <= goalDays ? 'green' : days <= regulatoryDays ? 'yellow' : 'red';
+  const pctOfGoal = (days) =>
+    days == null || !goalDays ? null : Math.round((days / goalDays) * 100);
 
   const current = monthly[monthly.length - 1] || null;
   const previous = monthly[monthly.length - 2] || null;
   const currentAvg = current?.avgFilingDaysEff ?? null;
   const previousAvg = previous?.avgFilingDaysEff ?? null;
 
-  const monthlyPerformancePct = pctOf(currentAvg);
-
   let momVariancePct = null;
+  let momDeltaDays = null;
   if (currentAvg != null && previousAvg != null && previousAvg !== 0) {
     momVariancePct = Math.round(((currentAvg - previousAvg) / previousAvg) * 100);
+    momDeltaDays = Math.round((currentAvg - previousAvg) * 10) / 10;
   }
 
   const historyDays = monthly.slice(0, -1).slice(-12)
@@ -362,18 +366,20 @@ export function computePerformanceKpis(monthly, targetDays) {
   const historicalAvgDays = historyDays.length
     ? Math.round((historyDays.reduce((a, b) => a + b, 0) / historyDays.length) * 10) / 10
     : null;
-  const historicalPct = pctOf(historicalAvgDays);
 
   return {
-    targetDays,
+    goalDays,
+    regulatoryDays,
     currentAvgDays: currentAvg,
-    monthlyPerformancePct,
-    monthlyPerformanceStatus: ratioStatus(monthlyPerformancePct),
+    monthlyPerformancePct: pctOfGoal(currentAvg),
+    monthlyPerformanceStatus: dayStatus(currentAvg),
+    meetsGoal: currentAvg == null ? null : currentAvg <= goalDays,
     momVariancePct,
+    momDeltaDays,
     momImproving: momVariancePct == null ? null : momVariancePct < 0,
     historicalAvgDays,
-    historicalPct,
-    historicalStatus: ratioStatus(historicalPct),
+    historicalPct: pctOfGoal(historicalAvgDays),
+    historicalStatus: dayStatus(historicalAvgDays),
   };
 }
 

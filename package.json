@@ -8,5 +8,9 @@
     "start": "python3 -m http.server 8080",
     "test": "node --test tests/",
     "generate-samples": "node tools/generate-samples.mjs"
+  },
+  "devDependencies": {
+    "jszip": "^3.10.1",
+    "pptxgenjs": "^3.12.0"
   }
 }

@@ -35,7 +35,7 @@ Open <http://localhost:8080>, then either:
 | KPI / Data Processing Engine (pure JS, UI-free) | `src/engines/kpiEngine.js` |
 | Goal Engine — versioned, effective-dated goals (history preserved) | `src/engines/goalEngine.js` |
 | Employee Analytics — balanced 0–100 performance indexes, coaching/recognition flags | `src/engines/employeeAnalytics.js` |
-| PowerPoint Export — single executive slide: native editable combo chart (4-column embedded worksheet) + KPI cards as native shapes (PptxGenJS) | `src/exports/pptxExport.js` |
+| Executive Report generation — template-driven engine: injects chart data, embedded workbook, and KPI text into the corporate master template (`template/ctr-executive-master.pptx`), preserving all formatting | `src/exports/reportEngine.js` |
 | Goal Management page (role-gated, audited) | `src/dashboards/goals.js` |
 | Audit Log (imports, goal changes, exports — localStorage) | `src/services/auditService.js` |
 | Role-based access (Admin / Manager / Analyst / Executive / Auditor) | `config/application-settings.json` |
@@ -50,6 +50,9 @@ npm test        # node --test tests/engine.test.mjs — 16 KPI/goal/analytics va
 ```
 
 Regenerate the deterministic sample datasets with `npm run generate-samples`.
+Rebuild the master report template (only needed when the corporate template
+or chart series structure changes) with `node tools/build-master-template.mjs`
+(requires `npm install` for the dev dependencies).
 
 ## Key business rules
 

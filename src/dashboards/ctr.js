@@ -10,7 +10,7 @@ import { buildModel, uniqueValues, monthOptions, STATUS_OPTIONS, momVariance } f
 import { computePerformanceKpis } from '../engines/kpiEngine.js';
 import { classify, evaluate } from '../engines/goalEngine.js';
 import { setFilters, can } from '../app/state.js';
-import { exportCtrPptx } from '../exports/pptxExport.js';
+import { generateCtrReport } from '../exports/reportEngine.js';
 import { downloadJson } from '../exports/jsonExport.js';
 import { auditLog } from '../services/auditService.js';
 
@@ -56,13 +56,13 @@ export function renderCtrDashboard(container, state) {
   const labels = m.map((x) => x.label);
 
   // ---- CTR Performance Trend (executive lead section):
-  // workload volume + avg filing days vs the regulatory 15-day objective,
-  // with its own Monthly / MoM / 12-Month KPI cards.
-  const perf = computePerformanceKpis(m, g.regulatoryThresholdDays);
+  // workload volume + avg filing days vs the 5-day internal goal and the
+  // 15-day regulatory deadline, with Monthly / MoM / 12-Month KPI cards.
+  const perf = computePerformanceKpis(m, g.internalTargetDays, g.regulatoryThresholdDays);
   const perfSection = el('div', { class: 'perf-section' });
   perfSection.append(chartPanel({
     title: 'CTR Performance Trend',
-    subtitle: `Monthly filing volume and average filing days vs the ${g.regulatoryThresholdDays}-day regulatory objective`,
+    subtitle: `Monthly filing volume and average filing days vs the ${g.internalTargetDays}-day internal goal and ${g.regulatoryThresholdDays}-day regulatory deadline`,
     height: 420,
     empty: model.empty, emptyMessage: EMPTY_MSG,
     direction: { up: false, label: 'Fewer filing days is better' },
@@ -70,36 +70,41 @@ export function renderCtrDashboard(container, state) {
       months: labels,
       volume: { color: S.completedVolume, data: m.map((x) => x.completedFilings) },
       avgDays: { color: S.avgFilingDays, data: m.map((x) => x.avgFilingDaysEff) },
-      targetDays: g.regulatoryThresholdDays,
+      goalLines: [
+        { value: g.regulatoryThresholdDays, label: `Regulatory ${g.regulatoryThresholdDays} Days`, kind: 'regulatoryThreshold' },
+        { value: g.internalTargetDays, label: `Goal ${g.internalTargetDays} Days`, kind: 'internalTarget' },
+      ],
     }),
     tableModel: {
-      headers: ['Month', 'Avg Filing Days', 'Target', 'CTRs Completed'],
-      rows: m.map((x) => [x.label, x.avgFilingDaysEff, g.regulatoryThresholdDays, x.completedFilings]),
+      headers: ['Month', 'CTRs Completed', 'Avg Filing Days', `Regulatory Deadline (${g.regulatoryThresholdDays} Days)`, `Internal Goal (${g.internalTargetDays} Days)`],
+      rows: m.map((x) => [x.label, x.completedFilings, x.avgFilingDaysEff, g.regulatoryThresholdDays, g.internalTargetDays]),
     },
   }));
   perfSection.append(el('div', { class: 'perf-cards' },
     kpiCard({
       title: 'Monthly Performance',
-      value: perf.monthlyPerformancePct == null ? '—' : `${perf.monthlyPerformancePct}%`,
+      value: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} Days`,
       status: perf.monthlyPerformanceStatus,
       note: perf.currentAvgDays == null
         ? 'No completed filings this month'
-        : `${perf.currentAvgDays} days vs ${perf.targetDays}-day objective`,
+        : `${perf.monthlyPerformancePct}% of ${perf.goalDays}-day goal ${perf.meetsGoal ? '✓' : '✗'}`,
     }),
     kpiCard({
       title: 'MoM Variance',
       value: perf.momVariancePct == null ? '—'
         : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`,
       status: perf.momVariancePct == null ? 'info' : perf.momImproving ? 'green' : perf.momVariancePct === 0 ? 'info' : 'red',
-      note: perf.momImproving == null ? undefined : perf.momImproving ? 'Improving vs prior month' : perf.momVariancePct === 0 ? 'Unchanged vs prior month' : 'Slower vs prior month',
+      note: perf.momDeltaDays == null ? undefined
+        : perf.momImproving ? `Improved ${Math.abs(perf.momDeltaDays)} Days`
+        : perf.momDeltaDays === 0 ? 'Unchanged vs prior month' : `Slower by ${Math.abs(perf.momDeltaDays)} Days`,
     }),
     kpiCard({
       title: '12-Month Historical',
-      value: perf.historicalPct == null ? '—' : `${perf.historicalPct}%`,
+      value: perf.historicalAvgDays == null ? '—' : `${perf.historicalAvgDays} Days`,
       status: perf.historicalStatus,
       note: perf.historicalAvgDays == null
         ? undefined
-        : `Rolling avg ${perf.historicalAvgDays} days vs ${perf.targetDays}-day objective`,
+        : `Rolling average · ${perf.historicalPct}% of ${perf.goalDays}-day goal`,
     }),
   ));
   main.append(perfSection);
@@ -240,21 +245,21 @@ export function renderCtrDashboard(container, state) {
       onclick: async (e) => {
         const btn = e.currentTarget;
         btn.disabled = true;
-        btn.textContent = 'Generating…';
+        btn.textContent = 'Generating report…';
         try {
-          await exportCtrPptx(model, state.config);
-          auditLog('EXPORT_PPTX', 'CTR Performance Trend slide', { user: state.role });
-          notifyToast('Executive slide exported — the chart and KPI cards are natively editable in PowerPoint.', 'success');
+          await generateCtrReport(model, state.config);
+          auditLog('GENERATE_REPORT', 'CTR Executive Report (template-driven)', { user: state.role });
+          notifyToast('Executive report generated from the corporate template — chart data and KPI text injected, all formatting preserved.', 'success');
         } catch (err) {
           console.error(err);
-          notifyToast(`PowerPoint export failed: ${err.message}`, 'error');
-          auditLog('EXPORT_PPTX_FAILED', 'CTR Performance Trend slide', { user: state.role, newValue: err.message });
+          notifyToast(`Report generation failed: ${err.message}`, 'error');
+          auditLog('GENERATE_REPORT_FAILED', 'CTR Executive Report', { user: state.role, newValue: err.message });
         } finally {
           btn.disabled = false;
-          btn.textContent = '⬇ Export Executive Slide (PowerPoint)';
+          btn.textContent = '⬇ Generate Executive Report';
         }
       },
-    }, '⬇ Export Executive Slide (PowerPoint)'));
+    }, '⬇ Generate Executive Report'));
     actions.append(el('button', {
       class: 'btn-ghost',
       onclick: () => {

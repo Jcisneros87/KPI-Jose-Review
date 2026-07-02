@@ -214,11 +214,12 @@ export function stackedStatus({ months, stacks, totals }) {
  * line, with a constant regulatory target reference line. Volume labels sit
  * inside the columns; avg-days labels ride above the line points.
  */
-export function performanceTrend({ months, volume, avgDays, targetDays, volumeName = 'CTRs Completed', lineName = 'Avg Filing Days' }) {
+export function performanceTrend({ months, volume, avgDays, goalLines = [], volumeName = 'CTRs Completed', lineName = 'Avg Filing Days' }) {
+  const maxRef = Math.max(...goalLines.map((l) => l.value || 0), 0);
   const opt = base(months);
   opt.yAxis = [
     valueAxis('Reports'),
-    valueAxis('Days', { extra: { splitLine: { show: false }, max: (v) => Math.ceil(Math.max(v.max, targetDays * 1.25)) } }),
+    valueAxis('Days', { extra: { splitLine: { show: false }, max: (v) => Math.ceil(Math.max(v.max, maxRef * 1.25)) } }),
   ];
   opt.series = [
     {
@@ -258,7 +259,7 @@ export function performanceTrend({ months, volume, avgDays, targetDays, volumeNa
         formatter: (p) => (p.value == null ? '' : p.value),
       },
       emphasis: { focus: 'series' },
-      markLine: goalMarkLine([{ value: targetDays, label: `Target ${targetDays} Days`, kind: 'regulatoryThreshold' }]),
+      markLine: goalMarkLine(goalLines),
     },
   ];
   return opt;

@@ -199,6 +199,21 @@ test('completed-filings cohort: Accepted Date, pending-Submitted fallback, non-f
   assert.equal(monthly[1].avgFilingDaysEff, 32);    // fallback Creation→Submitted (01/02→02/03), no pollution from non-filings
 });
 
+test('goal-based performance KPIs: % of internal goal, day deltas, dual-bound status', () => {
+  const mk = (avg) => ({ avgFilingDaysEff: avg, completedFilings: 10 });
+  const perf = computePerformanceKpis([mk(4.2), mk(3.8)], 5, 15);
+  assert.equal(perf.currentAvgDays, 3.8);
+  assert.equal(perf.monthlyPerformancePct, 76);        // 3.8 / 5
+  assert.equal(perf.monthlyPerformanceStatus, 'green'); // ≤ 5-day goal
+  assert.equal(perf.meetsGoal, true);
+  assert.equal(perf.momDeltaDays, -0.4);                // improved 0.4 days
+  assert.equal(perf.momImproving, true);
+  // between goal and regulatory deadline → yellow; beyond deadline → red
+  assert.equal(computePerformanceKpis([mk(5), mk(9)], 5, 15).monthlyPerformanceStatus, 'yellow');
+  assert.equal(computePerformanceKpis([mk(5), mk(16)], 5, 15).monthlyPerformanceStatus, 'red');
+  assert.equal(computePerformanceKpis([mk(5), mk(9)], 5, 15).meetsGoal, false);
+});
+
 test('performance KPI cards: monthly %, MoM variance, 12-month historical', () => {
   const mk = (avg) => ({ avgFilingDaysEff: avg, completedFilings: 10 });
   // 13 months: twelve at 12 days, current at 13.8 days, target 15

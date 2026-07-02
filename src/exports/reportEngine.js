@@ -1,0 +1,218 @@
+/**
+ * Template-Driven Reporting Engine (replaces programmatic PPTX generation).
+ *
+ * Philosophy: the application never recreates chart styling. The corporate
+ * master template (template/ctr-executive-master.pptx — derived from the
+ * supplied "Example KPI Template.pptx") is opened as a zip and ONLY data is
+ * injected:
+ *   1. the chart's cached category/value points (what PowerPoint renders),
+ *   2. the embedded Excel workbook (what Chart Design → Edit Data opens),
+ *   3. the {{TOKEN}} text placeholders (title, subtitle, KPI cards).
+ * All fonts, colors, markers, axes, legends, branding, and slide layout come
+ * from the template and are left untouched.
+ *
+ * The patch helpers are environment-agnostic (Node tests + browser); the
+ * generateCtrReport() entry point is browser-only.
+ */
+
+import { computePerformanceKpis } from '../engines/kpiEngine.js';
+
+// Part paths inside the master template (see tools/build-master-template.mjs)
+export const TEMPLATE_PATH = 'template/ctr-executive-master.pptx';
+export const CHART_PART = 'ppt/charts/chart4.xml';
+export const WORKBOOK_PART = 'ppt/embeddings/Microsoft_Excel_Worksheet3.xlsx';
+export const SLIDE_PART = 'ppt/slides/slide1.xml';
+
+export function xmlEscape(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+/**
+ * Replace the cached data points of every <c:ser> in a chart XML part, in
+ * document order. seriesValues[i] is the value array for series i (null =
+ * gap). Category months are applied to every series; series names (c:tx),
+ * styling, and axes are untouched. Formula ranges are re-rowed to the data
+ * length so Edit Data stays aligned with the rewritten workbook.
+ */
+export function patchChartXml(chartXml, months, seriesValues) {
+  let si = 0;
+  return chartXml.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, (ser) => {
+    const vals = seriesValues[si++];
+    if (!vals) return ser;
+    const pts = months.map((mm, i) => `<c:pt idx="${i}"><c:v>${xmlEscape(mm)}</c:v></c:pt>`).join('');
+    // Categories may be cached as plain strCache or (PptxGenJS) multiLvlStrCache
+    let out = ser.replace(
+      /(<c:cat>[\s\S]*?)<c:strCache>[\s\S]*?<\/c:strCache>([\s\S]*?<\/c:cat>)/,
+      (whole, before, after) =>
+        `${before}<c:strCache><c:ptCount val="${months.length}"/>${pts}</c:strCache>${after}`
+    );
+    out = out.replace(
+      /(<c:cat>[\s\S]*?)<c:multiLvlStrCache>[\s\S]*?<\/c:multiLvlStrCache>([\s\S]*?<\/c:cat>)/,
+      (whole, before, after) =>
+        `${before}<c:multiLvlStrCache><c:ptCount val="${months.length}"/><c:lvl>${pts}</c:lvl></c:multiLvlStrCache>${after}`
+    );
+    out = out.replace(
+      /(<c:val>[\s\S]*?<c:numCache>)[\s\S]*?(<\/c:numCache>[\s\S]*?<\/c:val>)/,
+      (whole, before, after) => {
+        const fmt = (whole.match(/<c:formatCode>[^<]*<\/c:formatCode>/) || ['<c:formatCode>General</c:formatCode>'])[0];
+        return before + fmt +
+          `<c:ptCount val="${vals.length}"/>` +
+          vals.map((v, i) => (v == null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`)).join('') +
+          after;
+      }
+    );
+    // data ranges always start at row 2 (row 1 = headers)
+    out = out.replace(/(\$[A-Z]+\$)2:(\$[A-Z]+\$)\d+/g, (whole, a, b) => `${a}2:${b}${months.length + 1}`);
+    return out;
+  });
+}
+
+/** Replace {{TOKEN}} placeholders in slide XML with escaped values. */
+export function patchSlideTokens(slideXml, tokens) {
+  let out = slideXml;
+  for (const [key, value] of Object.entries(tokens)) {
+    out = out.split(`{{${key}}}`).join(xmlEscape(value ?? ''));
+  }
+  return out;
+}
+
+/**
+ * Build the minimal embedded workbook PowerPoint opens via Edit Data:
+ * ONE sheet, header row + data rows, no helper columns, no hidden sheets,
+ * no extra calculations (per the template-integration spec).
+ * columns: [{ header, values: (string|number|null)[] }] — first column is
+ * Month (strings), the rest numeric.
+ */
+export async function buildEmbeddedWorkbook(JSZipClass, columns) {
+  const colLetter = (i) => String.fromCharCode(65 + i); // A..Z (5 columns used)
+  const rowCount = Math.max(...columns.map((c) => c.values.length)) + 1;
+
+  let sheetRows = `<row r="1">` + columns.map((c, ci) =>
+    `<c r="${colLetter(ci)}1" t="inlineStr"><is><t>${xmlEscape(c.header)}</t></is></c>`).join('') + '</row>';
+  for (let r = 0; r < rowCount - 1; r++) {
+    sheetRows += `<row r="${r + 2}">` + columns.map((c, ci) => {
+      const v = c.values[r];
+      if (v == null || v === '') return '';
+      if (typeof v === 'number') return `<c r="${colLetter(ci)}${r + 2}"><v>${v}</v></c>`;
+      return `<c r="${colLetter(ci)}${r + 2}" t="inlineStr"><is><t>${xmlEscape(v)}</t></is></c>`;
+    }).join('') + '</row>';
+  }
+
+  const zip = new JSZipClass();
+  zip.file('[Content_Types].xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    '</Types>');
+  zip.file('_rels/.rels',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>');
+  zip.file('xl/workbook.xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  zip.file('xl/_rels/workbook.xml.rels',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    '</Relationships>');
+  zip.file('xl/styles.xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+    '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>' +
+    '<borders count="1"><border/></borders>' +
+    '<cellStyleXfs count="1"><xf/></cellStyleXfs>' +
+    '<cellXfs count="1"><xf/></cellXfs>' +
+    '</styleSheet>');
+  zip.file('xl/worksheets/sheet1.xml',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    `<sheetData>${sheetRows}</sheetData></worksheet>`);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+/** Assemble everything a report injection needs from the dashboard model. */
+export function buildReportData(model, config) {
+  const g = model.goals || { internalTargetDays: 5, regulatoryThresholdDays: 15 };
+  const m = model.monthly;
+  const months = m.map((x) => x.label);
+  const perf = computePerformanceKpis(m, g.internalTargetDays, g.regulatoryThresholdDays);
+
+  const seriesValues = [
+    m.map((x) => x.completedFilings ?? 0),
+    m.map((x) => x.avgFilingDaysEff),
+    months.map(() => g.regulatoryThresholdDays),
+    months.map(() => g.internalTargetDays),
+  ];
+  const columns = [
+    { header: 'Month', values: months },
+    { header: 'CTRs Completed', values: seriesValues[0] },
+    { header: 'Avg Filing Days', values: seriesValues[1] },
+    { header: `Regulatory Deadline (${g.regulatoryThresholdDays} Days)`, values: seriesValues[2] },
+    { header: `Internal Goal (${g.internalTargetDays} Days)`, values: seriesValues[3] },
+  ];
+  const tokens = {
+    REPORT_TITLE: 'BSA/AML Department',
+    REPORT_SUBTITLE: `CTR Filing Performance – ${model.currentMonthLabel || ''}`,
+    KPI_MONTHLY: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} Days`,
+    KPI_MONTHLY_NOTE: perf.currentAvgDays == null
+      ? 'No completed filings this month'
+      : `${perf.monthlyPerformancePct}% of ${g.internalTargetDays}-day goal ${perf.meetsGoal ? '✓' : '✗'}`,
+    KPI_MOM: perf.momVariancePct == null ? '—'
+      : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`,
+    KPI_MOM_NOTE: perf.momDeltaDays == null ? ''
+      : perf.momImproving ? `Improved ${Math.abs(perf.momDeltaDays)} Days`
+      : perf.momDeltaDays === 0 ? 'Unchanged vs prior month' : `Slower by ${Math.abs(perf.momDeltaDays)} Days`,
+    KPI_HIST: perf.historicalAvgDays == null ? '—' : `${perf.historicalAvgDays} Days`,
+    KPI_HIST_NOTE: perf.historicalAvgDays == null ? '' : `Rolling average · ${perf.historicalPct}% of goal`,
+  };
+  return { months, seriesValues, columns, tokens, perf };
+}
+
+/**
+ * Inject report data into a loaded template zip (JSZip instance).
+ * Shared by the browser entry point and Node verification.
+ */
+export async function injectReport(zip, JSZipClass, model, config) {
+  const { months, seriesValues, columns, tokens } = buildReportData(model, config);
+
+  const chartXml = await zip.file(CHART_PART).async('string');
+  zip.file(CHART_PART, patchChartXml(chartXml, months, seriesValues));
+
+  zip.file(WORKBOOK_PART, await buildEmbeddedWorkbook(JSZipClass, columns));
+
+  const slideXml = await zip.file(SLIDE_PART).async('string');
+  zip.file(SLIDE_PART, patchSlideTokens(slideXml, tokens));
+
+  return zip;
+}
+
+/** Browser entry point: Generate Executive Report. */
+export async function generateCtrReport(model, config) {
+  const JSZipClass = window.JSZip;
+  if (!JSZipClass) throw new Error('JSZip library is not loaded.');
+  const res = await fetch(TEMPLATE_PATH);
+  if (!res.ok) throw new Error(`Master template not found at ${TEMPLATE_PATH} — run: node tools/build-master-template.mjs`);
+  const zip = await JSZipClass.loadAsync(await res.arrayBuffer());
+  await injectReport(zip, JSZipClass, model, config);
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `CTR-Executive-Report-${model.currentMonth || 'export'}.pptx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

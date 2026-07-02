@@ -970,3 +970,56 @@ executive reporting platform for Altura Credit Union's BSA/AML Department.
 Design every module so Phase 2+ dashboards (Alerts, Cases, Fraud, OFAC,
 314(a)/314(b)) can be added through configuration and new dashboard
 definitions — without modifying the core engines.
+
+---
+
+## 14. Executive PowerPoint Template Integration (Revision — 2026-07-02)
+
+The dashboard no longer generates PowerPoint charts from scratch. The export
+is a **template-driven reporting engine**: it opens the corporate master
+template, replaces only the embedded chart data and KPI text, and preserves
+all formatting — chart style, fonts, colors, legends, markers, axes, labels,
+corporate branding, and slide layout.
+
+### Template Reference
+
+Official reporting assets live in `template/`:
+
+| File | Role |
+|------|------|
+| `Example KPI Template.pptx` | Supplied corporate template ("Regional Operations Support / Deployment Rate" slide) — the authoritative formatting reference. Never modified. |
+| `Chart in Microsoft PowerPoint.xlsx` | Companion workbook the original chart was built from. Reference only. |
+| `ctr-executive-master.pptx` | **The master export template.** Derived from the corporate template by `tools/build-master-template.mjs`: the corporate slide (theme, layout, logo, KPI card shapes) is preserved; the active chart (`ppt/charts/chart4.xml`, originally a 2-series percent line chart) is replaced once with the required 4-series CTR combo structure; text fields are tokenized (`{{REPORT_TITLE}}`, `{{KPI_MONTHLY}}`, …). |
+
+Documented template decision: the supplied chart was a 2-series line chart and
+could not express the required clustered columns + dual reference lines, so
+the chart structure was transplanted **once** at template-build time; the
+runtime never touches formatting.
+
+### Chart contract
+
+- Clustered columns — **CTRs Completed**
+- Line (smooth, circular markers, data labels) — **Avg Filing Days**
+  (Creation → Accepted; Creation → Submitted when acceptance is pending)
+- Red dashed constant line — **Regulatory Deadline (15 Days)**
+- Green dashed constant line — **Internal Goal (5 Days)**
+
+### Embedded workbook contract (Chart Design → Edit Data)
+
+Exactly five columns, one worksheet, no hidden sheets, helper columns, or
+extra series: `Month · CTRs Completed · Avg Filing Days · Regulatory Deadline
+(15 Days) · Internal Goal (5 Days)`.
+
+### KPI cards (native editable shapes/text)
+
+- **Monthly Performance** — avg filing days + % of internal goal (e.g. `3.8 Days · 76% of 5-day goal ✓`)
+- **MoM Variance** — direction + % + day delta (e.g. `▼ 3% · Improved 0.4 Days`)
+- **12-Month Historical** — rolling avg days + % of goal (e.g. `4.9 Days · 98% of goal`)
+
+### Workflow
+
+Import CTR CSV → dashboard recalculates → **Generate Executive Report** →
+engine opens the master template → injects chart caches + embedded workbook +
+KPI tokens → saves `CTR-Executive-Report-<YYYY-MM>.pptx`. The output is
+indistinguishable from a manually built deck and fully editable; future
+template-based slides (SAR, Alerts, Cases) reuse the same engine.
