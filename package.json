@@ -1,0 +1,12 @@
+{
+  "name": "altura-bsa-kpi",
+  "version": "1.0.0",
+  "description": "Altura BSA KPI — executive reporting platform for the BSA/AML Department",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test tests/",
+    "generate-samples": "node tools/generate-samples.mjs"
+  }
+}

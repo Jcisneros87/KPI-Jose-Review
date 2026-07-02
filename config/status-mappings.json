@@ -1,0 +1,6 @@
+{
+  "accepted": ["accepted"],
+  "excluded": ["excluded", "cancelled"],
+  "pending": ["open", "in progress", "queued", "pending"],
+  "skipDuplicateReportNumbers": true
+}

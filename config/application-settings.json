@@ -1,0 +1,13 @@
+{
+  "applicationTitle": "Altura BSA KPI",
+  "organization": "Altura Credit Union — BSA/AML Department",
+  "rollingMonths": 13,
+  "dateLocale": "en-US",
+  "roles": {
+    "admin": { "label": "Administrator", "importCsv": true, "editGoals": true, "export": true, "viewEmployeeMetrics": "full", "modifyConfiguration": true, "viewAuditLog": true },
+    "manager": { "label": "BSA Manager", "importCsv": true, "editGoals": true, "export": true, "viewEmployeeMetrics": "full", "modifyConfiguration": false, "viewAuditLog": true },
+    "analyst": { "label": "Analyst", "importCsv": true, "editGoals": false, "export": true, "viewEmployeeMetrics": "limited", "modifyConfiguration": false, "viewAuditLog": false },
+    "executive": { "label": "Executive", "importCsv": false, "editGoals": false, "export": true, "viewEmployeeMetrics": "summary", "modifyConfiguration": false, "viewAuditLog": false },
+    "auditor": { "label": "Auditor", "importCsv": false, "editGoals": false, "export": true, "viewEmployeeMetrics": "full", "modifyConfiguration": false, "viewAuditLog": true }
+  }
+}

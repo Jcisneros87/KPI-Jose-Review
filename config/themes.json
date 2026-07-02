@@ -1,0 +1,39 @@
+{
+  "brand": {
+    "background": "#0b2d5c",
+    "backgroundDeep": "#081f40",
+    "panel": "#ffffff",
+    "success": "#2e7d32",
+    "warning": "#f9a825",
+    "danger": "#c62828",
+    "info": "#1e3a5f"
+  },
+  "ink": {
+    "primary": "#0b0b0b",
+    "secondary": "#52514e",
+    "muted": "#898781",
+    "grid": "#e1e0d9",
+    "axis": "#c3c2b7"
+  },
+  "series": {
+    "created": "#2a78d6",
+    "queued": "#1baf7a",
+    "submitted": "#eda100",
+    "accepted": "#008300",
+    "excluded": "#4a3aa7",
+    "pending": "#eb6834",
+    "queueFailed": "#e34948",
+    "other": "#898781",
+    "onTimePct": "#0d366b",
+    "durationStartToQueue": "#1baf7a",
+    "durationQueueToSubmit": "#eda100",
+    "durationSubmitToAccept": "#e87ba4",
+    "durationStartToAccept": "#0d366b",
+    "ctr": "#2a78d6",
+    "sar": "#4a3aa7"
+  },
+  "goalLines": {
+    "internalTarget": "#2e7d32",
+    "regulatoryThreshold": "#c62828"
+  }
+}

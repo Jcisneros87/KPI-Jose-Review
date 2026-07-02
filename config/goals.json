@@ -1,0 +1,40 @@
+{
+  "versions": [
+    {
+      "version": 1,
+      "effectiveDate": "2025-01-01",
+      "modifiedBy": "system",
+      "changeSummary": "Initial defaults from SRS",
+      "ctr": {
+        "internalTargetDays": 5,
+        "regulatoryThresholdDays": 15,
+        "onTimeTargetPct": 100,
+        "queueFailureTarget": 0,
+        "timelineGoalLineDays": 2
+      },
+      "sar": {
+        "internalTargetDays": 21,
+        "regulatoryThresholdDays": 30,
+        "onTimeTargetPct": 100,
+        "queueFailureTarget": 0
+      }
+    }
+  ],
+  "scoring": {
+    "weights": {
+      "productivity": 0.25,
+      "timeliness": 0.2,
+      "compliance": 0.25,
+      "quality": 0.2,
+      "workload": 0.1
+    },
+    "coaching": {
+      "minCompliancePct": 85,
+      "maxQueueFailRatePct": 5
+    },
+    "recognition": {
+      "minOnTimePct": 98,
+      "minVolumeSharePct": 12
+    }
+  }
+}

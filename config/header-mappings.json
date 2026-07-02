@@ -1,0 +1,61 @@
+{
+  "ctr": {
+    "anchorField": "creationDate",
+    "required": [
+      "Entity Names", "Activity End Date", "Total Cash In", "Total Cash Out",
+      "Assigned Owner Name", "Status", "Due Date", "Creation Date",
+      "Document Control Number", "Report Number", "Accepted Date",
+      "Queue Failed", "Queued By", "Queued Date", "Submitted Date", "Branch Number"
+    ],
+    "optional": [],
+    "fields": {
+      "Entity Names": { "key": "entityNames", "type": "string" },
+      "Activity End Date": { "key": "activityEndDate", "type": "date" },
+      "Total Cash In": { "key": "totalCashIn", "type": "number" },
+      "Total Cash Out": { "key": "totalCashOut", "type": "number" },
+      "Assigned Owner Name": { "key": "owner", "type": "string" },
+      "Status": { "key": "status", "type": "string" },
+      "Due Date": { "key": "dueDate", "type": "date" },
+      "Creation Date": { "key": "creationDate", "type": "date" },
+      "Document Control Number": { "key": "dcn", "type": "string" },
+      "Report Number": { "key": "reportNumber", "type": "string" },
+      "Accepted Date": { "key": "acceptedDate", "type": "date" },
+      "Queue Failed": { "key": "queueFailed", "type": "boolean" },
+      "Queued By": { "key": "queuedBy", "type": "string" },
+      "Queued Date": { "key": "queuedDate", "type": "date" },
+      "Submitted Date": { "key": "submittedDate", "type": "date" },
+      "Branch Number": { "key": "branch", "type": "string" }
+    }
+  },
+  "sar": {
+    "anchorField": "determinationDate",
+    "required": [
+      "Entity Names", "Activity End Date", "Total Value", "Assigned Owner Name",
+      "Status", "Due Date", "Creation Date", "Document Control Number",
+      "Report Number", "Queued By", "Date of Determination", "Accepted Date",
+      "Primary Activity Subtype", "Primary Activity Type", "Queue Failed",
+      "Submitted Date", "Type of Filing"
+    ],
+    "optional": ["FI Note to FinCEN", "Queued Date"],
+    "fields": {
+      "Entity Names": { "key": "entityNames", "type": "string" },
+      "Activity End Date": { "key": "activityEndDate", "type": "date" },
+      "Total Value": { "key": "totalValue", "type": "number" },
+      "Assigned Owner Name": { "key": "owner", "type": "string" },
+      "Status": { "key": "status", "type": "string" },
+      "Due Date": { "key": "dueDate", "type": "date" },
+      "Creation Date": { "key": "creationDate", "type": "date" },
+      "Document Control Number": { "key": "dcn", "type": "string" },
+      "Report Number": { "key": "reportNumber", "type": "string" },
+      "Queued By": { "key": "queuedBy", "type": "string" },
+      "Date of Determination": { "key": "determinationDate", "type": "date" },
+      "Accepted Date": { "key": "acceptedDate", "type": "date" },
+      "FI Note to FinCEN": { "key": "fiNote", "type": "string" },
+      "Primary Activity Subtype": { "key": "activitySubtype", "type": "string" },
+      "Primary Activity Type": { "key": "activityType", "type": "string" },
+      "Queue Failed": { "key": "queueFailed", "type": "boolean" },
+      "Submitted Date": { "key": "submittedDate", "type": "date" },
+      "Type of Filing": { "key": "filingType", "type": "string" }
+    }
+  }
+}
