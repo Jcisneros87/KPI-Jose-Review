@@ -7,6 +7,8 @@
  * exportCtrPptx() is the browser entry point.
  */
 
+import { computePerformanceKpis } from '../engines/kpiEngine.js';
+
 const hex = (c) => String(c || '888888').replace('#', '');
 
 function slideChrome(pptx, slide, theme, { title, subtitle, period, footer }) {
@@ -126,7 +128,67 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
   title.addText(period, { x: 0.5, y: 4.3, w: 12.33, h: 0.4, align: 'center', fontSize: 14, color: 'B9C6DA', fontFace: 'Segoe UI' });
   title.addText('BSA/AML Department — Monthly Executive Reporting', { x: 0.5, y: 6.8, w: 12.33, h: 0.4, align: 'center', fontSize: 11, color: '8FA3BF', fontFace: 'Segoe UI' });
 
-  // ---- Slide 1: Funnel
+  // ---- Slide 1: Performance Trend (executive lead slide)
+  // Embedded worksheet carries exactly the four required columns: Month,
+  // CTRs Completed, Avg Filing Days, Target. The bar group must precede the
+  // line group so columns render behind the trend line, which fixes the
+  // worksheet column order.
+  {
+    const perf = computePerformanceKpis(m, g.regulatoryThresholdDays);
+    const s = pptx.addSlide();
+    slideChrome(pptx, s, theme, {
+      title: 'CTR Performance Trend',
+      subtitle: `Filing volume and average filing days vs the ${g.regulatoryThresholdDays}-day regulatory objective`,
+      period, footer,
+    });
+    s.addChart([
+      {
+        type: pptx.charts.BAR,
+        data: [series('CTRs Completed', labels, m.map((x) => x.completed))],
+        options: { barDir: 'col', barGrouping: 'clustered', chartColors: [hex(S.completedVolume)] },
+      },
+      {
+        type: pptx.charts.LINE,
+        data: [
+          lineSeries('Avg Filing Days', labels, m.map((x) => x.avgFilingDaysEff)),
+          constSeries('Target', labels, g.regulatoryThresholdDays),
+        ],
+        options: {
+          chartColors: [hex(S.avgFilingDays), hex(theme.goalLines?.regulatoryThreshold || theme.brand.danger)],
+          secondaryValAxis: true, secondaryCatAxis: true, lineSize: 2, lineSmooth: false,
+        },
+      },
+    ], {
+      ...baseChartOpts(theme),
+      valAxes: [
+        { showValAxisTitle: true, valAxisTitle: 'CTRs Completed' },
+        { showValAxisTitle: true, valAxisTitle: 'Avg Filing Days', valGridLine: { style: 'none' } },
+      ],
+      catAxes: [{ catAxisLabelColor: hex(theme.ink.muted) }, { catAxisHidden: true }],
+    });
+    kpiBoxes(pptx, s, theme, [
+      {
+        title: 'Monthly Performance',
+        value: perf.monthlyPerformancePct == null ? '—' : `${perf.monthlyPerformancePct}%`,
+        color: { green: theme.brand.success, yellow: theme.brand.warning, red: theme.brand.danger }[perf.monthlyPerformanceStatus] || theme.brand.info,
+      },
+      {
+        title: 'MoM Variance',
+        value: perf.momVariancePct == null ? '—' : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`,
+        color: perf.momVariancePct == null ? theme.brand.info : perf.momImproving ? theme.brand.success : perf.momVariancePct === 0 ? theme.brand.info : theme.brand.danger,
+      },
+      {
+        title: '12-Month Historical',
+        value: perf.historicalPct == null ? '—' : `${perf.historicalPct}%`,
+        color: { green: theme.brand.success, yellow: theme.brand.warning, red: theme.brand.danger }[perf.historicalStatus] || theme.brand.info,
+      },
+      { title: 'Avg Filing Days (Month)', value: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} d` },
+      { title: 'Regulatory Target', value: `${g.regulatoryThresholdDays} Days` },
+      { title: 'CTRs Completed (Month)', value: m[m.length - 1]?.completed ?? '—' },
+    ]);
+  }
+
+  // ---- Slide 2: Funnel
   {
     const s = pptx.addSlide();
     slideChrome(pptx, s, theme, { title: 'CTR Funnel Numbers Broken Out By Month', subtitle: 'Workflow volume throughout the reporting lifecycle', period, footer });
@@ -148,7 +210,7 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
     kpiBoxes(pptx, s, theme, cards);
   }
 
-  // ---- Slide 2: SLA performance (stacked + on-time % line, secondary axis)
+  // ---- Slide 3: SLA performance (stacked + on-time % line, secondary axis)
   {
     const s = pptx.addSlide();
     slideChrome(pptx, s, theme, { title: 'CTR SLA Performance', subtitle: 'Filing compliance and SLA performance — goal: 100% on-time', period, footer });
@@ -186,7 +248,7 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
     kpiBoxes(pptx, s, theme, cards);
   }
 
-  // ---- Slide 3: Workflow timeline (columns + duration lines on days axis)
+  // ---- Slide 4: Workflow timeline (columns + duration lines on days axis)
   {
     const s = pptx.addSlide();
     slideChrome(pptx, s, theme, { title: 'CTR Workflow Timeline', subtitle: `Workflow efficiency by stage — internal goal line ${g.timelineGoalLineDays ?? 2} days`, period, footer });
@@ -227,7 +289,7 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
     kpiBoxes(pptx, s, theme, cards);
   }
 
-  // ---- Slide 4: Status breakdown (stacked)
+  // ---- Slide 5: Status breakdown (stacked)
   {
     const s = pptx.addSlide();
     slideChrome(pptx, s, theme, { title: 'CTR Status Breakdown', subtitle: 'Operational distribution and filing outcomes by creation month', period, footer });
@@ -249,7 +311,7 @@ export function buildCtrDeck(PptxGenJS, model, config, generatedAt = new Date())
     kpiBoxes(pptx, s, theme, cards);
   }
 
-  // ---- Slide 5: Accepted vs Excluded trend (clustered + total created line)
+  // ---- Slide 6: Accepted vs Excluded trend (clustered + total created line)
   {
     const s = pptx.addSlide();
     slideChrome(pptx, s, theme, { title: 'CTR Accepted vs Excluded Trend', subtitle: 'Completed filings versus exclusions over time', period, footer });

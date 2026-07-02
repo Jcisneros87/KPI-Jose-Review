@@ -5,8 +5,9 @@
  */
 
 import { el, fmt, kpiCard, kpiRail, chartPanel, filterBar, notifyToast, sectionHeader } from '../components/ui.js';
-import { clusteredColumns, stackedWithPercentLine, workflowTimeline, stackedStatus } from '../charts/chartService.js';
+import { clusteredColumns, stackedWithPercentLine, workflowTimeline, stackedStatus, performanceTrend } from '../charts/chartService.js';
 import { buildModel, uniqueValues, monthOptions, STATUS_OPTIONS, momVariance } from './common.js';
+import { computePerformanceKpis } from '../engines/kpiEngine.js';
 import { classify, evaluate } from '../engines/goalEngine.js';
 import { setFilters, can } from '../app/state.js';
 import { exportCtrPptx } from '../exports/pptxExport.js';
@@ -53,6 +54,55 @@ export function renderCtrDashboard(container, state) {
 
   const m = model.monthly;
   const labels = m.map((x) => x.label);
+
+  // ---- CTR Performance Trend (executive lead section):
+  // workload volume + avg filing days vs the regulatory 15-day objective,
+  // with its own Monthly / MoM / 12-Month KPI cards.
+  const perf = computePerformanceKpis(m, g.regulatoryThresholdDays);
+  const perfSection = el('div', { class: 'perf-section' });
+  perfSection.append(chartPanel({
+    title: 'CTR Performance Trend',
+    subtitle: `Monthly filing volume and average filing days vs the ${g.regulatoryThresholdDays}-day regulatory objective`,
+    height: 420,
+    empty: model.empty, emptyMessage: EMPTY_MSG,
+    direction: { up: false, label: 'Fewer filing days is better' },
+    option: performanceTrend({
+      months: labels,
+      volume: { color: S.completedVolume, data: m.map((x) => x.completed) },
+      avgDays: { color: S.avgFilingDays, data: m.map((x) => x.avgFilingDaysEff) },
+      targetDays: g.regulatoryThresholdDays,
+    }),
+    tableModel: {
+      headers: ['Month', 'Avg Filing Days', 'Target', 'CTRs Completed'],
+      rows: m.map((x) => [x.label, x.avgFilingDaysEff, g.regulatoryThresholdDays, x.completed]),
+    },
+  }));
+  perfSection.append(el('div', { class: 'perf-cards' },
+    kpiCard({
+      title: 'Monthly Performance',
+      value: perf.monthlyPerformancePct == null ? '—' : `${perf.monthlyPerformancePct}%`,
+      status: perf.monthlyPerformanceStatus,
+      note: perf.currentAvgDays == null
+        ? 'No completed filings this month'
+        : `${perf.currentAvgDays} days vs ${perf.targetDays}-day objective`,
+    }),
+    kpiCard({
+      title: 'MoM Variance',
+      value: perf.momVariancePct == null ? '—'
+        : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`,
+      status: perf.momVariancePct == null ? 'info' : perf.momImproving ? 'green' : perf.momVariancePct === 0 ? 'info' : 'red',
+      note: perf.momImproving == null ? undefined : perf.momImproving ? 'Improving vs prior month' : perf.momVariancePct === 0 ? 'Unchanged vs prior month' : 'Slower vs prior month',
+    }),
+    kpiCard({
+      title: '12-Month Historical',
+      value: perf.historicalPct == null ? '—' : `${perf.historicalPct}%`,
+      status: perf.historicalStatus,
+      note: perf.historicalAvgDays == null
+        ? undefined
+        : `Rolling avg ${perf.historicalAvgDays} days vs ${perf.targetDays}-day objective`,
+    }),
+  ));
+  main.append(perfSection);
 
   // ---- Dashboard 1: Funnel by month
   main.append(chartPanel({

@@ -111,6 +111,16 @@ body {
 }
 
 .dash-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 1rem; align-items: start; }
+
+/* Performance Trend lead section: large chart + three executive KPI cards */
+.perf-section { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 1rem; align-items: stretch; }
+.perf-section .chart-panel { margin-bottom: 0; }
+.perf-cards { display: flex; flex-direction: column; gap: 0.8rem; }
+.perf-cards .kpi-card { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0.9rem 0.8rem; }
+.perf-cards .kpi-value { font-size: 2.1rem; }
+.perf-cards .kpi-title { font-size: 0.78rem; }
+.perf-cards .kpi-note { font-size: 0.7rem; margin-top: 0.35rem; }
+@media (max-width: 1100px) { .perf-section { grid-template-columns: 1fr; } }
 .dash-main { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
 @media (max-width: 1100px) { .dash-layout { grid-template-columns: 1fr; } .kpi-rail { position: static; } }
 

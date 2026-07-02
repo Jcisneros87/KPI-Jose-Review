@@ -209,6 +209,61 @@ export function stackedStatus({ months, stacks, totals }) {
   return opt;
 }
 
+/**
+ * Executive Performance Trend: workload columns behind a prominent avg-days
+ * line, with a constant regulatory target reference line. Volume labels sit
+ * inside the columns; avg-days labels ride above the line points.
+ */
+export function performanceTrend({ months, volume, avgDays, targetDays, volumeName = 'CTRs Completed', lineName = 'Avg Filing Days' }) {
+  const opt = base(months);
+  opt.yAxis = [
+    valueAxis('Reports'),
+    valueAxis('Days', { extra: { splitLine: { show: false }, max: (v) => Math.ceil(Math.max(v.max, targetDays * 1.25)) } }),
+  ];
+  opt.series = [
+    {
+      name: volumeName,
+      type: 'bar',
+      data: volume.data,
+      barMaxWidth: 26,
+      itemStyle: { color: volume.color, borderRadius: [4, 4, 0, 0] },
+      label: {
+        show: true,
+        position: 'insideBottom',
+        distance: 6,
+        fontSize: 9,
+        color: '#1e3a5f',
+        formatter: (p) => (p.value ? p.value : ''),
+      },
+      emphasis: { focus: 'series' },
+    },
+    {
+      name: lineName,
+      type: 'line',
+      yAxisIndex: 1,
+      data: avgDays.data,
+      z: 10,
+      lineStyle: { width: 2.5, color: avgDays.color },
+      itemStyle: { color: avgDays.color, borderColor: '#ffffff', borderWidth: 2 },
+      symbol: 'circle',
+      symbolSize: 9,
+      connectNulls: true,
+      label: {
+        show: true,
+        position: 'top',
+        distance: 8,
+        fontSize: 10,
+        fontWeight: 600,
+        color: INK.primary,
+        formatter: (p) => (p.value == null ? '' : p.value),
+      },
+      emphasis: { focus: 'series' },
+      markLine: goalMarkLine([{ value: targetDays, label: `Target ${targetDays} Days`, kind: 'regulatoryThreshold' }]),
+    },
+  ];
+  return opt;
+}
+
 /** Multi-line chart (Executive filing-time performance). */
 export function multiLine({ months, lines, yName = 'Days', goalLines }) {
   const opt = base(months);

@@ -227,8 +227,8 @@ export function aggregateMonthly(records, months) {
     month: k,
     label: monthLabel(k),
     created: 0, queued: 0, submitted: 0, accepted: 0, acceptedByStart: 0,
-    excluded: 0, pending: 0, queueFailed: 0, other: 0,
-    _startToQueue: [], _queueToSubmit: [], _submitToAccept: [], _startToAccept: [],
+    excluded: 0, pending: 0, queueFailed: 0, other: 0, completed: 0,
+    _startToQueue: [], _queueToSubmit: [], _submitToAccept: [], _startToAccept: [], _effDays: [],
     _onTime: 0, _onTimeDen: 0,
   }]));
 
@@ -259,6 +259,15 @@ export function aggregateMonthly(records, months) {
         if (r.onTime) aBucket._onTime++;
       }
     }
+    // "Completed" cohort: Accepted Date, falling back to Submitted Date when
+    // acceptance is still pending (Performance Trend definition).
+    const completionDate = r.acceptedDate || r.submittedDate;
+    const cBucket = byMonth.get(monthKey(completionDate));
+    if (cBucket) {
+      cBucket.completed++;
+      const effDays = r.dStartToAccept ?? r.dStartToSubmit;
+      if (effDays != null) cBucket._effDays.push(effDays);
+    }
   }
 
   return months.map((k) => {
@@ -275,6 +284,8 @@ export function aggregateMonthly(records, months) {
       pending: b.pending,
       queueFailed: b.queueFailed,
       other: b.other,
+      completed: b.completed,
+      avgFilingDaysEff: avg(b._effDays),
       avgStartToQueue: avg(b._startToQueue),
       avgQueueToSubmit: avg(b._queueToSubmit),
       avgSubmitToAccept: avg(b._submitToAccept),
@@ -301,6 +312,55 @@ export function summarize(records) {
     avgFilingDays: avg(withFiling.map((r) => r.dStartToAccept)),
     onTimePct: pct(onTimeNum.length, onTimeDen.length),
     pastDue: onTimeDen.length - onTimeNum.length,
+  };
+}
+
+/**
+ * Performance Trend KPI cards (executive enhancement):
+ *  - Monthly Performance: current avg filing days as a % of the target
+ *    (92% = using 92% of the allowed time). Green ≤95%, amber ≤100%, red >100%.
+ *  - MoM Variance: % change in avg days vs prior month (down = improving).
+ *  - 12-Month Historical: rolling average of the 12 months before the current
+ *    one, as a % of target.
+ * Expects the monthly array from aggregateMonthly() (13 rolling months) and
+ * the target in days.
+ */
+export function computePerformanceKpis(monthly, targetDays) {
+  const ratioStatus = (pctOfTarget) =>
+    pctOfTarget == null ? 'info' : pctOfTarget <= 95 ? 'green' : pctOfTarget <= 100 ? 'yellow' : 'red';
+  const pctOf = (days) =>
+    days == null || !targetDays ? null : Math.round((days / targetDays) * 100);
+
+  const current = monthly[monthly.length - 1] || null;
+  const previous = monthly[monthly.length - 2] || null;
+  const currentAvg = current?.avgFilingDaysEff ?? null;
+  const previousAvg = previous?.avgFilingDaysEff ?? null;
+
+  const monthlyPerformancePct = pctOf(currentAvg);
+
+  let momVariancePct = null;
+  if (currentAvg != null && previousAvg != null && previousAvg !== 0) {
+    momVariancePct = Math.round(((currentAvg - previousAvg) / previousAvg) * 100);
+  }
+
+  const historyDays = monthly.slice(0, -1).slice(-12)
+    .map((m) => m.avgFilingDaysEff)
+    .filter((v) => v != null);
+  const historicalAvgDays = historyDays.length
+    ? Math.round((historyDays.reduce((a, b) => a + b, 0) / historyDays.length) * 10) / 10
+    : null;
+  const historicalPct = pctOf(historicalAvgDays);
+
+  return {
+    targetDays,
+    currentAvgDays: currentAvg,
+    monthlyPerformancePct,
+    monthlyPerformanceStatus: ratioStatus(monthlyPerformancePct),
+    momVariancePct,
+    momImproving: momVariancePct == null ? null : momVariancePct < 0,
+    historicalAvgDays,
+    historicalPct,
+    historicalStatus: ratioStatus(historicalPct),
   };
 }
 

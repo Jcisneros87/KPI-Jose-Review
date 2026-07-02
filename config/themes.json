@@ -25,6 +25,8 @@
     "queueFailed": "#e34948",
     "other": "#898781",
     "onTimePct": "#0d366b",
+    "completedVolume": "#86b6ef",
+    "avgFilingDays": "#0d366b",
     "durationStartToQueue": "#1baf7a",
     "durationQueueToSubmit": "#eda100",
     "durationSubmitToAccept": "#e87ba4",

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseDate, parseNumber, parseBool, daysBetween, monthKey, rollingMonths,
   validateHeaders, normalizeRecords, filterRecords, aggregateMonthly,
-  summarize, latestMonth,
+  summarize, latestMonth, computePerformanceKpis,
 } from '../src/engines/kpiEngine.js';
 import { activeGoalVersion, classify, evaluate } from '../src/engines/goalEngine.js';
 import { computeEmployeeStats } from '../src/engines/employeeAnalytics.js';
@@ -178,6 +178,47 @@ test('SAR workflow starts at Date of Determination; Queued Date is optional', ()
   assert.equal(r.dStartToQueue, null); // queued date absent
   assert.equal(r.onTime, true);        // accepted 02/04 ≤ due 02/09
   assert.equal(classify(25, 21, 30), 'yellow');
+});
+
+// ---------------------------------------------------------------- performance trend
+
+test('completed cohort uses Accepted Date with Submitted fallback (performance trend)', () => {
+  const rows = [
+    benchmarkCtrRow,                                                                        // accepted 01/06
+    { ...benchmarkCtrRow, 'Report Number': 'CTR-SUB', 'Status': 'Open', 'Accepted Date': '', 'Submitted Date': '02/03/2026' },
+    { ...benchmarkCtrRow, 'Report Number': 'CTR-NONE', 'Status': 'Open', 'Accepted Date': '', 'Submitted Date': '', 'Queued Date': '' },
+  ];
+  const { records } = normalizeRecords(rows, 'ctr', mappings, statusMappings);
+  const monthly = aggregateMonthly(records, ['2026-01', '2026-02']);
+  assert.equal(monthly[0].completed, 1);            // accepted in Jan
+  assert.equal(monthly[1].completed, 1);            // submitted-only lands in Feb
+  assert.equal(monthly[0].avgFilingDaysEff, 4);     // Creation→Accepted
+  assert.equal(monthly[1].avgFilingDaysEff, 32);    // fallback Creation→Submitted (01/02→02/03)
+});
+
+test('performance KPI cards: monthly %, MoM variance, 12-month historical', () => {
+  const mk = (avg) => ({ avgFilingDaysEff: avg, completed: 10 });
+  // 13 months: twelve at 12 days, current at 13.8 days, target 15
+  const monthly = [...Array.from({ length: 12 }, () => mk(12)), mk(13.8)];
+  const perf = computePerformanceKpis(monthly, 15);
+  assert.equal(perf.monthlyPerformancePct, 92);            // 13.8 / 15
+  assert.equal(perf.monthlyPerformanceStatus, 'green');    // ≤95%
+  assert.equal(perf.momVariancePct, 15);                   // (13.8-12)/12
+  assert.equal(perf.momImproving, false);
+  assert.equal(perf.historicalAvgDays, 12);
+  assert.equal(perf.historicalPct, 80);
+  assert.equal(perf.historicalStatus, 'green');
+  // exceeding target goes red; improving MoM is flagged
+  const worse = computePerformanceKpis([mk(10), mk(16.5)], 15);
+  assert.equal(worse.monthlyPerformancePct, 110);
+  assert.equal(worse.monthlyPerformanceStatus, 'red');
+  const better = computePerformanceKpis([mk(10), mk(9)], 15);
+  assert.equal(better.momImproving, true);
+  assert.equal(better.momVariancePct, -10);
+  // no data → info, no compliance color
+  const empty = computePerformanceKpis([mk(null), mk(null)], 15);
+  assert.equal(empty.monthlyPerformanceStatus, 'info');
+  assert.equal(empty.momVariancePct, null);
 });
 
 // ---------------------------------------------------------------- goal engine
