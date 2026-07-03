@@ -121,10 +121,10 @@ async function buildMaster({ type, volumeLabel, g }) {
   // Strip styling from invisible (symbol="none") markers — PptxGenJS assigns
   // their fill colors from global state that varies across instances, which
   // would otherwise make the CTR and SAR masters structurally diverge.
-  donorChart = donorChart.replace(
-    /<c:marker>\s*<c:symbol val="none"\/>[\s\S]*?<\/c:marker>/g,
-    '<c:marker><c:symbol val="none"/></c:marker>'
-  );
+  donorChart = donorChart.replace(/<c:marker>[\s\S]*?<\/c:marker>/g, (marker) =>
+    /<c:symbol\s+val="none"\s*\/>/.test(marker)
+      ? '<c:marker><c:symbol val="none"/></c:marker>'
+      : marker);
 
   template.file('ppt/charts/chart4.xml', donorChart);
   // style4.xml / colors4.xml (Microsoft chart-style extension parts) are left

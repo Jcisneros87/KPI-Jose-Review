@@ -220,11 +220,17 @@ test('unknown report type throws (codex coverage gap)', async () => {
   await assert.rejects(() => injectReport(null, JSZip, bare, {}, 'alerts'), /Unknown report type/);
 });
 
-test('template builder regenerates both masters independently (codex coverage gap)', async () => {
+test('template builder regenerates both masters independently (codex coverage gap)', async (t) => {
   const { execFileSync } = await import('node:child_process');
   const { mkdtempSync, readFileSync: rf } = await import('node:fs');
   const { tmpdir } = await import('node:os');
-  const outDir = mkdtempSync(join(tmpdir(), 'altura-templates-'));
+  let outDir;
+  try {
+    outDir = mkdtempSync(join(tmpdir(), 'altura-templates-'));
+  } catch (err) {
+    t.skip(`sandbox forbids temp dirs (${err.code}) — builder regeneration not testable here`);
+    return;
+  }
   execFileSync('node', [join(root, 'tools/build-master-template.mjs')], {
     env: { ...process.env, TEMPLATE_OUT_DIR: outDir },
     stdio: 'pipe',
@@ -266,6 +272,21 @@ test('parity: CTR and SAR masters share identical slide layout and structure', a
   );
   const parts = (z) => Object.keys(z.files).filter((f) => !z.files[f].dir).sort().join(',');
   assert.equal(parts(ctr), parts(sar), 'package part inventories must match');
+
+  // Embedded workbook structure must match too (codex: name-only inventory
+  // comparison would miss workbook divergence/corruption)
+  const wbStructure = async (zip) => {
+    const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
+    const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+    return {
+      parts: Object.keys(wb.files).filter((f) => !wb.files[f].dir).sort().join(','),
+      sheetSkeleton: sheet
+        .replace(/<t>[^<]*<\/t>/g, '<t>T</t>')
+        .replace(/<v>[^<]*<\/v>/g, '<v>N</v>'),
+    };
+  };
+  assert.deepEqual(await wbStructure(ctr), await wbStructure(sar),
+    'embedded workbook part inventory and sheet structure must match');
 });
 
 test('parity: generated CTR and SAR reports share order, structure, and token set', async () => {
@@ -276,10 +297,14 @@ test('parity: generated CTR and SAR reports share order, structure, and token se
     const chart = await zip.file(CHART_PART).async('string');
     const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
     const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+    const catCache = chart.match(/<c:cat>[\s\S]*?<\/c:cat>/)[0];
     outputs[type] = {
       seriesOrder: [...chart.matchAll(/<c:tx>[\s\S]*?<c:v>([^<]*)<\/c:v>/g)].map((m) => m[1]),
       headers: [...sheet.matchAll(/<c r="[A-E]1" t="inlineStr"><is><t>([^<]*)<\/t>/g)].map((m) => m[1]),
-      tokenKeys: Object.keys(buildReportData(model, {}, type).tokens),
+      // month labels asserted explicitly — the chart normalizer masks all
+      // <c:v> values, so category divergence needs its own check (codex)
+      monthLabels: [...catCache.matchAll(/<c:v>([^<]*)<\/c:v>/g)].map((m) => m[1]),
+      tokens: buildReportData(model, {}, type).tokens,
       chartSkeleton: normalizeChart(chart),
     };
   }
@@ -292,7 +317,22 @@ test('parity: generated CTR and SAR reports share order, structure, and token se
   assert.deepEqual(generic(outputs.ctr.seriesOrder), generic(outputs.sar.seriesOrder), 'chart/legend series order identical');
   assert.deepEqual(generic(outputs.ctr.headers), ['Month', 'VOLUME', 'Avg Filing Days', 'REG', 'GOAL']);
   assert.deepEqual(generic(outputs.ctr.headers), generic(outputs.sar.headers), 'workbook column order identical');
-  assert.deepEqual(outputs.ctr.tokenKeys, outputs.sar.tokenKeys, 'KPI card token set identical');
+  assert.equal(outputs.ctr.monthLabels.length, 13);
+  assert.deepEqual(outputs.ctr.monthLabels, outputs.sar.monthLabels, 'category month labels identical');
+  // Token VALUES compared after masking type-specific words/numbers — catches
+  // wording, symbol, and structure drift the key-set check would miss (codex).
+  // Direction arrows/verbs and goal-met marks are data-driven, so they
+  // normalize too — structure, not outcomes, must match.
+  const normTokens = (tokens) => Object.fromEntries(Object.entries(tokens).map(([k, v]) => [
+    k, String(v)
+      .replace(/CTR|SAR/g, 'T')
+      .replace(/[\d.]+/g, 'N')
+      .replace(/[▲▼■]/g, 'DIR')
+      .replace(/Improved N Days|Slower by N Days|Unchanged vs prior month/g, 'DELTA')
+      .replace(/[✓✗]/g, 'MARK'),
+  ]));
+  assert.deepEqual(normTokens(outputs.ctr.tokens), normTokens(outputs.sar.tokens),
+    'KPI card token values structurally identical');
   assert.equal(outputs.ctr.chartSkeleton, outputs.sar.chartSkeleton, 'injected chart structure identical');
 });
 
