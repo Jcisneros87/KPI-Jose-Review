@@ -240,6 +240,62 @@ test('template builder regenerates both masters independently (codex coverage ga
   }
 });
 
+// ---------------------------------------------------------------- CTR/SAR parity
+// Standardization contract: the two exports must be identical in layout,
+// object hierarchy, series order, workbook column order, and KPI structure —
+// differing ONLY in labels, goal values, and the underlying data.
+
+const normalizeChart = (chart) => chart
+  .replace(/CTRs Completed|SARs Completed/g, 'VOLUME')
+  .replace(/Regulatory Deadline \(\d+ Days\)/g, 'REG')
+  .replace(/Internal Goal \(\d+ Days\)/g, 'GOAL')
+  .replace(/<c:v>[^<]*<\/c:v>/g, '<c:v>V</c:v>');
+
+test('parity: CTR and SAR masters share identical slide layout and structure', async () => {
+  const ctr = await loadMaster('ctr');
+  const sar = await loadMaster('sar');
+  assert.equal(
+    await ctr.file(SLIDE_PART).async('string'),
+    await sar.file(SLIDE_PART).async('string'),
+    'slide XML (layout, typography, KPI cards, object hierarchy) must be byte-identical'
+  );
+  assert.equal(
+    normalizeChart(await ctr.file(CHART_PART).async('string')),
+    normalizeChart(await sar.file(CHART_PART).async('string')),
+    'chart XML must be structurally identical after label/value normalization'
+  );
+  const parts = (z) => Object.keys(z.files).filter((f) => !z.files[f].dir).sort().join(',');
+  assert.equal(parts(ctr), parts(sar), 'package part inventories must match');
+});
+
+test('parity: generated CTR and SAR reports share order, structure, and token set', async () => {
+  const outputs = {};
+  for (const type of ['ctr', 'sar']) {
+    const model = sampleModel(type);
+    const zip = await injectReport(await loadMaster(type), JSZip, model, {}, type);
+    const chart = await zip.file(CHART_PART).async('string');
+    const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
+    const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+    outputs[type] = {
+      seriesOrder: [...chart.matchAll(/<c:tx>[\s\S]*?<c:v>([^<]*)<\/c:v>/g)].map((m) => m[1]),
+      headers: [...sheet.matchAll(/<c r="[A-E]1" t="inlineStr"><is><t>([^<]*)<\/t>/g)].map((m) => m[1]),
+      tokenKeys: Object.keys(buildReportData(model, {}, type).tokens),
+      chartSkeleton: normalizeChart(chart),
+    };
+  }
+  const generic = (arr) => arr.map((s) => s
+    .replace(/CTRs Completed|SARs Completed/, 'VOLUME')
+    .replace(/Regulatory Deadline \(\d+ Days\)/, 'REG')
+    .replace(/Internal Goal \(\d+ Days\)/, 'GOAL'));
+  // Required order: Volume → Avg Filing Days → Regulatory Deadline → Internal Goal
+  assert.deepEqual(generic(outputs.ctr.seriesOrder), ['VOLUME', 'Avg Filing Days', 'REG', 'GOAL']);
+  assert.deepEqual(generic(outputs.ctr.seriesOrder), generic(outputs.sar.seriesOrder), 'chart/legend series order identical');
+  assert.deepEqual(generic(outputs.ctr.headers), ['Month', 'VOLUME', 'Avg Filing Days', 'REG', 'GOAL']);
+  assert.deepEqual(generic(outputs.ctr.headers), generic(outputs.sar.headers), 'workbook column order identical');
+  assert.deepEqual(outputs.ctr.tokenKeys, outputs.sar.tokenKeys, 'KPI card token set identical');
+  assert.equal(outputs.ctr.chartSkeleton, outputs.sar.chartSkeleton, 'injected chart structure identical');
+});
+
 test('buildReportData produces the spec token set', () => {
   const model = sampleModel();
   const { tokens, columns } = buildReportData(model, {});

@@ -118,6 +118,14 @@ async function buildMaster({ type, volumeLabel, g }) {
   // Normalize formula references to the runtime workbook's sheet name
   donorChart = donorChart.replace(/<c:f>[^!<]+!/g, '<c:f>Sheet1!');
 
+  // Strip styling from invisible (symbol="none") markers — PptxGenJS assigns
+  // their fill colors from global state that varies across instances, which
+  // would otherwise make the CTR and SAR masters structurally diverge.
+  donorChart = donorChart.replace(
+    /<c:marker>\s*<c:symbol val="none"\/>[\s\S]*?<\/c:marker>/g,
+    '<c:marker><c:symbol val="none"/></c:marker>'
+  );
+
   template.file('ppt/charts/chart4.xml', donorChart);
   // style4.xml / colors4.xml (Microsoft chart-style extension parts) are left
   // in place — they are advisory hints and PptxGenJS charts don't use them.
