@@ -989,6 +989,7 @@ Official reporting assets live in `template/`:
 |------|------|
 | `Example KPI Template.pptx` | Supplied corporate template ("Regional Operations Support / Deployment Rate" slide) — the authoritative formatting reference. Never modified. |
 | `Chart in Microsoft PowerPoint.xlsx` | Companion workbook the original chart was built from. Reference only. |
+| `sar-executive-master.pptx` | SAR master (same corporate slide; SAR series names and 21/30-day reference lines). |
 | `ctr-executive-master.pptx` | **The master export template.** Derived from the corporate template by `tools/build-master-template.mjs`: the corporate slide (theme, layout, logo, KPI card shapes) is preserved; the active chart (`ppt/charts/chart4.xml`, originally a 2-series percent line chart) is replaced once with the required 4-series CTR combo structure; text fields are tokenized (`{{REPORT_TITLE}}`, `{{KPI_MONTHLY}}`, …). |
 
 Documented template decision: the supplied chart was a 2-series line chart and
@@ -1021,5 +1022,9 @@ extra series: `Month · CTRs Completed · Avg Filing Days · Regulatory Deadline
 Import CTR CSV → dashboard recalculates → **Generate Executive Report** →
 engine opens the master template → injects chart caches + embedded workbook +
 KPI tokens → saves `CTR-Executive-Report-<YYYY-MM>.pptx`. The output is
-indistinguishable from a manually built deck and fully editable; future
-template-based slides (SAR, Alerts, Cases) reuse the same engine.
+indistinguishable from a manually built deck and fully editable. The SAR
+dashboard uses the same engine with `sar-executive-master.pptx` (SARs
+Completed · Determination→Accepted avg days with Submitted fallback ·
+30-day regulatory deadline · 21-day internal goal), superseding the
+original Phase 2 deferral now that the CTR export is validated. Future
+template-based slides (Alerts, Cases) reuse the same engine.

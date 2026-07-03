@@ -17,8 +17,17 @@
 
 import { computePerformanceKpis } from '../engines/kpiEngine.js';
 
-// Part paths inside the master template (see tools/build-master-template.mjs)
-export const TEMPLATE_PATH = 'template/ctr-executive-master.pptx';
+/**
+ * Report types share one engine; only labels, goals wording, and the master
+ * template differ. Both masters derive from the same corporate template, so
+ * the internal part paths are identical.
+ */
+export const REPORT_TYPES = {
+  ctr: { volumeLabel: 'CTRs Completed', subject: 'CTR Filing Performance', template: 'template/ctr-executive-master.pptx' },
+  sar: { volumeLabel: 'SARs Completed', subject: 'SAR Filing Performance', template: 'template/sar-executive-master.pptx' },
+};
+
+// Part paths inside the master templates (see tools/build-master-template.mjs)
 export const CHART_PART = 'ppt/charts/chart4.xml';
 export const WORKBOOK_PART = 'ppt/embeddings/Microsoft_Excel_Worksheet3.xlsx';
 export const SLIDE_PART = 'ppt/slides/slide1.xml';
@@ -182,7 +191,9 @@ export async function buildEmbeddedWorkbook(JSZipClass, columns) {
 }
 
 /** Assemble everything a report injection needs from the dashboard model. */
-export function buildReportData(model, config) {
+export function buildReportData(model, config, type = 'ctr') {
+  const T = REPORT_TYPES[type];
+  if (!T) throw new Error(`Unknown report type: ${type}`);
   const g = model.goals || { internalTargetDays: 5, regulatoryThresholdDays: 15 };
   const m = model.monthly;
   const months = m.map((x) => x.label);
@@ -191,7 +202,7 @@ export function buildReportData(model, config) {
   // Series names double as legend labels AND workbook headers — injected on
   // every export so they always reflect the goal values active in config.
   const seriesData = [
-    { name: 'CTRs Completed', values: m.map((x) => x.completedFilings ?? 0) },
+    { name: T.volumeLabel, values: m.map((x) => x.completedFilings ?? 0) },
     { name: 'Avg Filing Days', values: m.map((x) => x.avgFilingDaysEff) },
     { name: `Regulatory Deadline (${g.regulatoryThresholdDays} Days)`, values: months.map(() => g.regulatoryThresholdDays) },
     { name: `Internal Goal (${g.internalTargetDays} Days)`, values: months.map(() => g.internalTargetDays) },
@@ -202,7 +213,7 @@ export function buildReportData(model, config) {
   ];
   const tokens = {
     REPORT_TITLE: 'BSA/AML Department',
-    REPORT_SUBTITLE: `CTR Filing Performance – ${model.currentMonthLabel || ''}`,
+    REPORT_SUBTITLE: `${T.subject} – ${model.currentMonthLabel || ''}`,
     KPI_MONTHLY: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} Days`,
     KPI_MONTHLY_NOTE: perf.currentAvgDays == null
       ? 'No completed filings this month'
@@ -222,8 +233,8 @@ export function buildReportData(model, config) {
  * Inject report data into a loaded template zip (JSZip instance).
  * Shared by the browser entry point and Node verification.
  */
-export async function injectReport(zip, JSZipClass, model, config) {
-  const { months, seriesData, columns, tokens } = buildReportData(model, config);
+export async function injectReport(zip, JSZipClass, model, config, type = 'ctr') {
+  const { months, seriesData, columns, tokens } = buildReportData(model, config, type);
 
   const chartXml = await zip.file(CHART_PART).async('string');
   zip.file(CHART_PART, patchChartXml(chartXml, months, seriesData));
@@ -236,14 +247,16 @@ export async function injectReport(zip, JSZipClass, model, config) {
   return zip;
 }
 
-/** Browser entry point: Generate Executive Report. */
-export async function generateCtrReport(model, config) {
+/** Browser entry point: Generate Executive Report (CTR or SAR). */
+export async function generateExecutiveReport(model, config, type = 'ctr') {
+  const T = REPORT_TYPES[type];
+  if (!T) throw new Error(`Unknown report type: ${type}`);
   const JSZipClass = window.JSZip;
   if (!JSZipClass) throw new Error('JSZip library is not loaded.');
-  const res = await fetch(TEMPLATE_PATH);
-  if (!res.ok) throw new Error(`Master template not found at ${TEMPLATE_PATH} — run: node tools/build-master-template.mjs`);
+  const res = await fetch(T.template);
+  if (!res.ok) throw new Error(`Master template not found at ${T.template} — run: node tools/build-master-template.mjs`);
   const zip = await JSZipClass.loadAsync(await res.arrayBuffer());
-  await injectReport(zip, JSZipClass, model, config);
+  await injectReport(zip, JSZipClass, model, config, type);
   const blob = await zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -251,7 +264,7 @@ export async function generateCtrReport(model, config) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `CTR-Executive-Report-${model.currentMonth || 'export'}.pptx`;
+  a.download = `${type.toUpperCase()}-Executive-Report-${model.currentMonth || 'export'}.pptx`;
   a.click();
   URL.revokeObjectURL(url);
 }

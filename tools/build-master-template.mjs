@@ -33,7 +33,7 @@ const JSZip = require('jszip');
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const themes = JSON.parse(readFileSync(join(root, 'config/themes.json'), 'utf8'));
 const goals = JSON.parse(readFileSync(join(root, 'config/goals.json'), 'utf8'));
-const g = goals.versions[goals.versions.length - 1].ctr;
+const activeGoals = goals.versions[goals.versions.length - 1];
 
 const hex = (c) => String(c).replace('#', '');
 const S = themes.series;
@@ -46,7 +46,7 @@ const PLACE_DAYS = MONTHS.map(() => 99.9);
 
 // ---------------------------------------------------------------- 1. donor chart
 
-async function buildDonorChart() {
+async function buildDonorChart(volumeLabel, g) {
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
   pptx.layout = 'WIDE';
@@ -54,7 +54,7 @@ async function buildDonorChart() {
   s.addChart([
     {
       type: pptx.charts.BAR,
-      data: [{ name: 'CTRs Completed', labels: MONTHS, values: PLACE_VOL }],
+      data: [{ name: volumeLabel, labels: MONTHS, values: PLACE_VOL }],
       options: {
         barDir: 'col', barGrouping: 'clustered',
         chartColors: [hex(S.completedVolume)],
@@ -88,7 +88,7 @@ async function buildDonorChart() {
     legendPos: 'b', showLegend: true, legendFontSize: 9,
     catGridLine: { style: 'none' },
     valAxes: [
-      { showValAxisTitle: true, valAxisTitle: 'CTRs Completed', valGridLine: { color: 'E1E0D9', style: 'solid', size: 0.5 } },
+      { showValAxisTitle: true, valAxisTitle: volumeLabel, valGridLine: { color: 'E1E0D9', style: 'solid', size: 0.5 } },
       { showValAxisTitle: true, valAxisTitle: 'Avg Filing Days', valGridLine: { style: 'none' }, valAxisMinVal: 0 },
     ],
     catAxes: [{}, { catAxisHidden: true }],
@@ -97,66 +97,72 @@ async function buildDonorChart() {
   return JSZip.loadAsync(buf);
 }
 
-// ---------------------------------------------------------------- 2. transplant
+// ---------------------------------------------------------------- 2. build one master per report type
 
-const template = await JSZip.loadAsync(readFileSync(join(root, 'template/Example KPI Template.pptx')));
-const donor = await buildDonorChart();
+async function buildMaster({ type, volumeLabel, g }) {
+  const template = await JSZip.loadAsync(readFileSync(join(root, 'template/Example KPI Template.pptx')));
+  const donor = await buildDonorChart(volumeLabel, g);
 
-let donorChart = await donor.file('ppt/charts/chart1.xml').async('string');
+  // PptxGenJS keeps a global chart counter across instances, so the donor's
+  // chart part name varies — locate it dynamically.
+  const donorChartPart = Object.keys(donor.files).find((f) => /^ppt\/charts\/chart\d+\.xml$/.test(f));
+  let donorChart = await donor.file(donorChartPart).async('string');
 
-// Point the donor chart's Edit Data reference at the template's workbook rel
-const chart4Rels = await template.file('ppt/charts/_rels/chart4.xml.rels').async('string');
-const pkgRel = chart4Rels.match(/Id="([^"]+)"[^>]*Type="[^"]*\/package"/) || chart4Rels.match(/Type="[^"]*\/package"[^>]*Id="([^"]+)"/);
-if (!pkgRel) throw new Error('No package relationship found in chart4.xml.rels');
-donorChart = donorChart.replace(/(<c:externalData r:id=")[^"]+(")/, `$1${pkgRel[1]}$2`);
+  // Point the donor chart's Edit Data reference at the template's workbook rel
+  const chart4Rels = await template.file('ppt/charts/_rels/chart4.xml.rels').async('string');
+  const pkgRel = chart4Rels.match(/Id="([^"]+)"[^>]*Type="[^"]*\/package"/) || chart4Rels.match(/Type="[^"]*\/package"[^>]*Id="([^"]+)"/);
+  if (!pkgRel) throw new Error('No package relationship found in chart4.xml.rels');
+  donorChart = donorChart.replace(/(<c:externalData r:id=")[^"]+(")/, `$1${pkgRel[1]}$2`);
 
-// Normalize formula references to the runtime workbook's sheet name
-donorChart = donorChart.replace(/<c:f>[^!<]+!/g, '<c:f>Sheet1!');
+  // Normalize formula references to the runtime workbook's sheet name
+  donorChart = donorChart.replace(/<c:f>[^!<]+!/g, '<c:f>Sheet1!');
 
-template.file('ppt/charts/chart4.xml', donorChart);
-// style4.xml / colors4.xml (Microsoft chart-style extension parts) are left
-// in place — they are advisory hints and PptxGenJS charts don't use them.
+  template.file('ppt/charts/chart4.xml', donorChart);
+  // style4.xml / colors4.xml (Microsoft chart-style extension parts) are left
+  // in place — they are advisory hints and PptxGenJS charts don't use them.
 
-// Coherent placeholder workbook (runtime rewrites it on every export)
-const donorWb = Object.keys(donor.files).find((f) => f.startsWith('ppt/embeddings/') && f.endsWith('.xlsx'));
-template.file('ppt/embeddings/Microsoft_Excel_Worksheet3.xlsx', await donor.file(donorWb).async('uint8array'));
+  // Coherent placeholder workbook (runtime rewrites it on every export)
+  const donorWb = Object.keys(donor.files).find((f) => f.startsWith('ppt/embeddings/') && f.endsWith('.xlsx'));
+  template.file('ppt/embeddings/Microsoft_Excel_Worksheet3.xlsx', await donor.file(donorWb).async('uint8array'));
 
-// ---------------------------------------------------------------- 3. tokenize slide text
+  // ---- tokenize slide text
+  let slide = await template.file('ppt/slides/slide1.xml').async('string');
 
-let slide = await template.file('ppt/slides/slide1.xml').async('string');
+  const replaceRun = (from, to) => {
+    if (!slide.includes(`<a:t>${from}</a:t>`)) throw new Error(`Slide text not found: "${from}"`);
+    slide = slide.replace(`<a:t>${from}</a:t>`, `<a:t>${to}</a:t>`);
+  };
+  replaceRun('Regional Operations Support', '{{REPORT_TITLE}}');
+  replaceRun('Deployment Rate– ', '{{REPORT_SUBTITLE}}');
+  replaceRun('May', '');
+  replaceRun(' 2026', '');
+  replaceRun('81% ', '{{KPI_MONTHLY}}');
+  replaceRun('9%', '{{KPI_MOM}}');
+  replaceRun('5%', '{{KPI_HIST}}');
 
-const replaceRun = (from, to) => {
-  if (!slide.includes(`<a:t>${from}</a:t>`)) throw new Error(`Slide text not found: "${from}"`);
-  slide = slide.replace(`<a:t>${from}</a:t>`, `<a:t>${to}</a:t>`);
-};
-replaceRun('Regional Operations Support', '{{REPORT_TITLE}}');
-replaceRun('Deployment Rate– ', '{{REPORT_SUBTITLE}}');
-replaceRun('May', '');
-replaceRun(' 2026', '');
-replaceRun('81% ', '{{KPI_MONTHLY}}');
-replaceRun('9%', '{{KPI_MOM}}');
-replaceRun('5%', '{{KPI_HIST}}');
+  // Add a note line under each KPI value, inheriting the value paragraph's
+  // alignment; 11pt so it reads as supporting text in the template's theme font.
+  function addNoteParagraph(valueToken, noteToken) {
+    const re = new RegExp(`<a:p>(?:(?!<a:p>)[\\s\\S])*?\\{\\{${valueToken}\\}\\}[\\s\\S]*?</a:p>`);
+    const match = slide.match(re);
+    if (!match) throw new Error(`Value paragraph not found for ${valueToken}`);
+    const pPr = (match[0].match(/<a:pPr[^>]*\/>|<a:pPr>[\s\S]*?<\/a:pPr>/) || [''])[0];
+    const note = `<a:p>${pPr}<a:r><a:rPr lang="en-US" sz="1100" dirty="0"/><a:t>{{${noteToken}}}</a:t></a:r></a:p>`;
+    slide = slide.replace(match[0], match[0] + note);
+  }
+  addNoteParagraph('KPI_MONTHLY', 'KPI_MONTHLY_NOTE');
+  addNoteParagraph('KPI_MOM', 'KPI_MOM_NOTE');
+  addNoteParagraph('KPI_HIST', 'KPI_HIST_NOTE');
 
-// Add a note line under each KPI value, inheriting the value paragraph's
-// alignment; 11pt so it reads as supporting text in the template's theme font.
-function addNoteParagraph(valueToken, noteToken) {
-  const re = new RegExp(`<a:p>(?:(?!<a:p>)[\\s\\S])*?\\{\\{${valueToken}\\}\\}[\\s\\S]*?</a:p>`);
-  const match = slide.match(re);
-  if (!match) throw new Error(`Value paragraph not found for ${valueToken}`);
-  const pPr = (match[0].match(/<a:pPr[^>]*\/>|<a:pPr>[\s\S]*?<\/a:pPr>/) || [''])[0];
-  const note = `<a:p>${pPr}<a:r><a:rPr lang="en-US" sz="1100" dirty="0"/><a:t>{{${noteToken}}}</a:t></a:r></a:p>`;
-  slide = slide.replace(match[0], match[0] + note);
+  template.file('ppt/slides/slide1.xml', slide);
+
+  const out = await template.generateAsync({ type: 'nodebuffer' });
+  const fileName = `template/${type}-executive-master.pptx`;
+  writeFileSync(join(root, fileName), out);
+  console.log(`Wrote ${fileName} (${out.length} bytes)`);
+  console.log(`  ${volumeLabel} (columns) · Avg Filing Days (line) · ` +
+    `Regulatory Deadline (${g.regulatoryThresholdDays} Days, red dash) · Internal Goal (${g.internalTargetDays} Days, green dash)`);
 }
-addNoteParagraph('KPI_MONTHLY', 'KPI_MONTHLY_NOTE');
-addNoteParagraph('KPI_MOM', 'KPI_MOM_NOTE');
-addNoteParagraph('KPI_HIST', 'KPI_HIST_NOTE');
 
-template.file('ppt/slides/slide1.xml', slide);
-
-// ---------------------------------------------------------------- 4. save
-
-const out = await template.generateAsync({ type: 'nodebuffer' });
-writeFileSync(join(root, 'template/ctr-executive-master.pptx'), out);
-console.log(`Wrote template/ctr-executive-master.pptx (${out.length} bytes)`);
-console.log('Series: CTRs Completed (columns) · Avg Filing Days (line) · ' +
-  `Regulatory Deadline (${g.regulatoryThresholdDays} Days, red dash) · Internal Goal (${g.internalTargetDays} Days, green dash)`);
+await buildMaster({ type: 'ctr', volumeLabel: 'CTRs Completed', g: activeGoals.ctr });
+await buildMaster({ type: 'sar', volumeLabel: 'SARs Completed', g: activeGoals.sar });

@@ -10,7 +10,7 @@ import { buildModel, uniqueValues, monthOptions, STATUS_OPTIONS, momVariance } f
 import { computePerformanceKpis } from '../engines/kpiEngine.js';
 import { classify, evaluate } from '../engines/goalEngine.js';
 import { setFilters, can } from '../app/state.js';
-import { generateCtrReport } from '../exports/reportEngine.js';
+import { generateExecutiveReport } from '../exports/reportEngine.js';
 import { downloadJson } from '../exports/jsonExport.js';
 import { auditLog } from '../services/auditService.js';
 
@@ -247,7 +247,7 @@ export function renderCtrDashboard(container, state) {
         btn.disabled = true;
         btn.textContent = 'Generating report…';
         try {
-          await generateCtrReport(model, state.config);
+          await generateExecutiveReport(model, state.config, 'ctr');
           auditLog('GENERATE_REPORT', 'CTR Executive Report (template-driven)', { user: state.role });
           notifyToast('Executive report generated from the corporate template — chart data and KPI text injected, all formatting preserved.', 'success');
         } catch (err) {

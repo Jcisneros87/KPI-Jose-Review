@@ -30,24 +30,24 @@ function parseCsv(text) {
   return lines.map((l) => Object.fromEntries(headers.map((h, i) => [h, l.split(',')[i] ?? ''])));
 }
 
-function sampleModel() {
-  const rows = parseCsv(readFileSync(join(root, 'examples/ctr-sample.csv'), 'utf8'));
-  const { records } = normalizeRecords(rows, 'ctr', mappings, statusMappings);
+function sampleModel(type = 'ctr') {
+  const rows = parseCsv(readFileSync(join(root, `examples/${type}-sample.csv`), 'utf8'));
+  const { records } = normalizeRecords(rows, type, mappings, statusMappings);
   const months = rollingMonths(latestMonth(records), 13);
   const monthly = aggregateMonthly(records, months);
   return {
     monthly,
     months,
     summary: summarize(records),
-    goals: goalsConfig.versions[goalsConfig.versions.length - 1].ctr,
+    goals: goalsConfig.versions[goalsConfig.versions.length - 1][type],
     currentMonth: months[12],
     currentMonthLabel: monthly[12].label,
     dateRangeLabel: `${monthly[0].label} – ${monthly[12].label}`,
   };
 }
 
-async function loadMaster() {
-  return JSZip.loadAsync(readFileSync(join(root, 'template/ctr-executive-master.pptx')));
+async function loadMaster(type = 'ctr') {
+  return JSZip.loadAsync(readFileSync(join(root, `template/${type}-executive-master.pptx`)));
 }
 
 test('injectReport patches chart caches with sample data (4 series, 13 points)', async () => {
@@ -172,6 +172,35 @@ test('configurable goals flow into legend labels, workbook headers, and constant
   const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
   assert.ok(sheet.includes('Regulatory Deadline (12 Days)') && sheet.includes('Internal Goal (4 Days)'),
     'workbook headers match legend labels');
+});
+
+test('SAR report: 21/30-day bounds, SAR labels, Determination-based data (mirrors CTR)', async () => {
+  const model = sampleModel('sar');
+  const zip = await injectReport(await loadMaster('sar'), JSZip, model, {}, 'sar');
+  const chart = await zip.file(CHART_PART).async('string');
+
+  const sers = chart.match(/<c:ser>[\s\S]*?<\/c:ser>/g);
+  assert.equal(sers.length, 4);
+  assert.ok(sers[0].includes('SARs Completed'), 'volume series labeled for SARs');
+  assert.ok(chart.includes('Regulatory Deadline (30 Days)') && chart.includes('Internal Goal (21 Days)'));
+  assert.equal((sers[2].match(/<c:v>30<\/c:v>/g) || []).length, 13, 'regulatory line = 13×30');
+  assert.equal((sers[3].match(/<c:v>21<\/c:v>/g) || []).length, 13, 'goal line = 13×21');
+  assert.ok(!chart.includes('PLACEHOLDER-M'), 'no builder placeholders survive');
+  for (const v of model.monthly.map((x) => x.completedFilings)) {
+    assert.ok(sers[0].includes(`<c:v>${v}</c:v>`), `SAR volume ${v} missing`);
+  }
+
+  const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
+  const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+  const headers = [...sheet.matchAll(/<c r="[A-E]1" t="inlineStr"><is><t>([^<]*)<\/t>/g)].map((x) => x[1]);
+  assert.deepEqual(headers, [
+    'Month', 'SARs Completed', 'Avg Filing Days', 'Regulatory Deadline (30 Days)', 'Internal Goal (21 Days)',
+  ]);
+
+  const slide = await zip.file(SLIDE_PART).async('string');
+  assert.ok(!/\{\{[A-Z_]+\}\}/.test(slide), 'no unresolved tokens');
+  assert.ok(slide.includes('SAR Filing Performance'), 'SAR subtitle injected');
+  assert.match(slide, /% of 21-day goal/, 'KPI note references the 21-day goal');
 });
 
 test('buildReportData produces the spec token set', () => {

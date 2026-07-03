@@ -4,13 +4,14 @@
  * and compliance monitoring.
  */
 
-import { el, fmt, kpiCard, kpiRail, chartPanel, filterBar, sectionHeader, dataTable } from '../components/ui.js';
-import { clusteredColumns, stackedWithPercentLine, workflowTimeline } from '../charts/chartService.js';
+import { el, fmt, kpiCard, kpiRail, chartPanel, filterBar, sectionHeader, dataTable, notifyToast } from '../components/ui.js';
+import { clusteredColumns, stackedWithPercentLine, workflowTimeline, performanceTrend } from '../charts/chartService.js';
 import { buildModel, uniqueValues, monthOptions, STATUS_OPTIONS, momVariance } from './common.js';
 import { classify, evaluate } from '../engines/goalEngine.js';
-import { filterRecords, summarize, groupBy } from '../engines/kpiEngine.js';
+import { filterRecords, summarize, groupBy, computePerformanceKpis } from '../engines/kpiEngine.js';
 import { setFilters, can } from '../app/state.js';
 import { downloadJson } from '../exports/jsonExport.js';
+import { generateExecutiveReport } from '../exports/reportEngine.js';
 import { auditLog } from '../services/auditService.js';
 
 const EMPTY_MSG = 'No SAR records match the selected filters.';
@@ -60,6 +61,61 @@ export function renderSarDashboard(container, state) {
   const main = el('div', { class: 'dash-main' });
   const m = model.monthly;
   const labels = m.map((x) => x.label);
+
+  // ---- SAR Performance Trend (executive lead section, mirrors CTR):
+  // filing volume + avg filing days (Determination → Accepted, Submitted
+  // fallback) vs the 21-day internal goal and 30-day regulatory deadline.
+  const perf = computePerformanceKpis(m, g.internalTargetDays, g.regulatoryThresholdDays);
+  const perfSection = el('div', { class: 'perf-section' });
+  perfSection.append(chartPanel({
+    title: 'SAR Performance Trend',
+    subtitle: `Monthly filing volume and average filing days vs the ${g.internalTargetDays}-day internal goal and ${g.regulatoryThresholdDays}-day regulatory deadline`,
+    height: 420,
+    empty: model.empty, emptyMessage: EMPTY_MSG,
+    direction: { up: false, label: 'Fewer filing days is better' },
+    option: performanceTrend({
+      months: labels,
+      volume: { color: S.completedVolume, data: m.map((x) => x.completedFilings) },
+      avgDays: { color: S.avgFilingDays, data: m.map((x) => x.avgFilingDaysEff) },
+      volumeName: 'SARs Completed',
+      goalLines: [
+        { value: g.regulatoryThresholdDays, label: `Regulatory ${g.regulatoryThresholdDays} Days`, kind: 'regulatoryThreshold' },
+        { value: g.internalTargetDays, label: `Goal ${g.internalTargetDays} Days`, kind: 'internalTarget' },
+      ],
+    }),
+    tableModel: {
+      headers: ['Month', 'SARs Completed', 'Avg Filing Days', `Regulatory Deadline (${g.regulatoryThresholdDays} Days)`, `Internal Goal (${g.internalTargetDays} Days)`],
+      rows: m.map((x) => [x.label, x.completedFilings, x.avgFilingDaysEff, g.regulatoryThresholdDays, g.internalTargetDays]),
+    },
+  }));
+  perfSection.append(el('div', { class: 'perf-cards' },
+    kpiCard({
+      title: 'Monthly Performance',
+      value: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} Days`,
+      status: perf.monthlyPerformanceStatus,
+      note: perf.currentAvgDays == null
+        ? 'No completed filings this month'
+        : `${perf.monthlyPerformancePct}% of ${perf.goalDays}-day goal ${perf.meetsGoal ? '✓' : '✗'}`,
+    }),
+    kpiCard({
+      title: 'MoM Variance',
+      value: perf.momVariancePct == null ? '—'
+        : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`,
+      status: perf.momVariancePct == null ? 'info' : perf.momImproving ? 'green' : perf.momVariancePct === 0 ? 'info' : 'red',
+      note: perf.momDeltaDays == null ? undefined
+        : perf.momImproving ? `Improved ${Math.abs(perf.momDeltaDays)} Days`
+        : perf.momDeltaDays === 0 ? 'Unchanged vs prior month' : `Slower by ${Math.abs(perf.momDeltaDays)} Days`,
+    }),
+    kpiCard({
+      title: '12-Month Historical',
+      value: perf.historicalAvgDays == null ? '—' : `${perf.historicalAvgDays} Days`,
+      status: perf.historicalStatus,
+      note: perf.historicalAvgDays == null
+        ? undefined
+        : `Rolling average · ${perf.historicalPct}% of ${perf.goalDays}-day goal`,
+    }),
+  ));
+  main.append(perfSection);
 
   // ---- Dashboard 1: Filing volume by month
   main.append(chartPanel({
@@ -213,6 +269,26 @@ export function renderSarDashboard(container, state) {
   if (can('export')) {
     main.append(el('div', { class: 'action-row' },
       el('button', {
+        class: 'btn-primary',
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          btn.textContent = 'Generating report…';
+          try {
+            await generateExecutiveReport(model, state.config, 'sar');
+            auditLog('GENERATE_REPORT', 'SAR Executive Report (template-driven)', { user: state.role });
+            notifyToast('Executive report generated from the corporate template — chart data and KPI text injected, all formatting preserved.', 'success');
+          } catch (err) {
+            console.error(err);
+            notifyToast(`Report generation failed: ${err.message}`, 'error');
+            auditLog('GENERATE_REPORT_FAILED', 'SAR Executive Report', { user: state.role, newValue: err.message });
+          } finally {
+            btn.disabled = false;
+            btn.textContent = '⬇ Generate Executive Report';
+          }
+        },
+      }, '⬇ Generate Executive Report'),
+      el('button', {
         class: 'btn-ghost',
         onclick: () => {
           downloadJson(`sar-dashboard-${model.currentMonth}.json`, {
@@ -225,7 +301,6 @@ export function renderSarDashboard(container, state) {
           auditLog('EXPORT_JSON', 'SAR Dashboard', { user: state.role });
         },
       }, '⬇ Export JSON'),
-      el('span', { class: 'muted-note' }, 'Editable PowerPoint export for SAR is scheduled for Phase 2 (after CTR export validation).'),
     ));
   }
 

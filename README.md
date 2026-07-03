@@ -31,7 +31,7 @@ Open <http://localhost:8080>, then either:
 |---|---|
 | Executive Dashboard (KPI cards, cross-module trends, leaderboard, goal progress) | `src/dashboards/executive.js` |
 | CTR Dashboard — 5 spec visualizations + compliance benchmarks | `src/dashboards/ctr.js` |
-| SAR Dashboard — 5 spec visualizations incl. Initial/Continuing + activity analysis | `src/dashboards/sar.js` |
+| SAR Dashboard — Performance Trend + 5 spec visualizations incl. Initial/Continuing + activity analysis, template-driven executive report | `src/dashboards/sar.js` |
 | KPI / Data Processing Engine (pure JS, UI-free) | `src/engines/kpiEngine.js` |
 | Goal Engine — versioned, effective-dated goals (history preserved) | `src/engines/goalEngine.js` |
 | Employee Analytics — balanced 0–100 performance indexes, coaching/recognition flags | `src/engines/employeeAnalytics.js` |
@@ -72,4 +72,3 @@ or chart series structure changes) with `node tools/build-master-template.mjs`
 - The CTR Workflow Timeline goal line defaults to **2 days**
   (`config/goals.json → timelineGoalLineDays`) per SRS Part 4 §12.5 — flagged
   as conflict C1 in the project specification; confirm with the product owner.
-- SAR editable PowerPoint export is deferred to Phase 2 (SRS 13.11).
