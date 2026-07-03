@@ -203,6 +203,43 @@ test('SAR report: 21/30-day bounds, SAR labels, Determination-based data (mirror
   assert.match(slide, /% of 21-day goal/, 'KPI note references the 21-day goal');
 });
 
+test('goal-less SAR model falls back to SAR bounds, never CTR (codex fix)', () => {
+  const bare = { monthly: [{ label: 'Jan 2026', completedFilings: 1, avgFilingDaysEff: 22 }], currentMonthLabel: 'Jan 2026' };
+  const sar = buildReportData(bare, {}, 'sar');
+  assert.ok(sar.columns.some((c) => c.header === 'Regulatory Deadline (30 Days)'));
+  assert.ok(sar.columns.some((c) => c.header === 'Internal Goal (21 Days)'));
+  assert.match(sar.tokens.KPI_MONTHLY_NOTE, /21-day goal/);
+  assert.ok(!JSON.stringify(sar.columns).includes('(15 Days)'), 'no CTR bounds leak into SAR');
+  const ctr = buildReportData(bare, {}, 'ctr');
+  assert.ok(ctr.columns.some((c) => c.header === 'Regulatory Deadline (15 Days)'));
+});
+
+test('unknown report type throws (codex coverage gap)', async () => {
+  const bare = { monthly: [{ label: 'Jan 2026', completedFilings: 1, avgFilingDaysEff: 5 }] };
+  assert.throws(() => buildReportData(bare, {}, 'alerts'), /Unknown report type/);
+  await assert.rejects(() => injectReport(null, JSZip, bare, {}, 'alerts'), /Unknown report type/);
+});
+
+test('template builder regenerates both masters independently (codex coverage gap)', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync: rf } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const outDir = mkdtempSync(join(tmpdir(), 'altura-templates-'));
+  execFileSync('node', [join(root, 'tools/build-master-template.mjs')], {
+    env: { ...process.env, TEMPLATE_OUT_DIR: outDir },
+    stdio: 'pipe',
+  });
+  for (const [type, vol, reg, goal] of [['ctr', 'CTRs Completed', 15, 5], ['sar', 'SARs Completed', 30, 21]]) {
+    const zip = await JSZip.loadAsync(rf(join(outDir, `template/${type}-executive-master.pptx`)));
+    const chart = await zip.file(CHART_PART).async('string');
+    assert.ok(chart.includes(vol), `${type}: volume series present`);
+    assert.ok(chart.includes(`Regulatory Deadline (${reg} Days)`) && chart.includes(`Internal Goal (${goal} Days)`),
+      `${type}: reference series named for its own bounds`);
+    const slide = await zip.file(SLIDE_PART).async('string');
+    assert.ok(slide.includes('{{KPI_MONTHLY}}'), `${type}: slide tokens present`);
+  }
+});
+
 test('buildReportData produces the spec token set', () => {
   const model = sampleModel();
   const { tokens, columns } = buildReportData(model, {});

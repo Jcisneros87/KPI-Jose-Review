@@ -2,9 +2,10 @@
  * ONE-TIME master template builder.
  *
  * Takes the supplied corporate template (template/Example KPI Template.pptx —
- * "Regional Operations Support / Deployment Rate" slide) and produces
- * template/ctr-executive-master.pptx, the master the runtime reporting
- * engine injects data into:
+ * "Regional Operations Support / Deployment Rate" slide) and produces BOTH
+ * runtime masters — template/ctr-executive-master.pptx and
+ * template/sar-executive-master.pptx — that the reporting engine injects
+ * data into:
  *
  *  - The corporate slide (theme, layout, logo, title/subtitle shapes, KPI
  *    cards) is preserved byte-for-byte except for text tokenization.
@@ -21,7 +22,7 @@
  * (Re-run only when the template or series structure changes.)
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -157,8 +158,12 @@ async function buildMaster({ type, volumeLabel, g }) {
   template.file('ppt/slides/slide1.xml', slide);
 
   const out = await template.generateAsync({ type: 'nodebuffer' });
+  // TEMPLATE_OUT_DIR lets tests regenerate masters without touching the
+  // committed files.
+  const outRoot = process.env.TEMPLATE_OUT_DIR || root;
+  mkdirSync(join(outRoot, 'template'), { recursive: true });
   const fileName = `template/${type}-executive-master.pptx`;
-  writeFileSync(join(root, fileName), out);
+  writeFileSync(join(outRoot, fileName), out);
   console.log(`Wrote ${fileName} (${out.length} bytes)`);
   console.log(`  ${volumeLabel} (columns) · Avg Filing Days (line) · ` +
     `Regulatory Deadline (${g.regulatoryThresholdDays} Days, red dash) · Internal Goal (${g.internalTargetDays} Days, green dash)`);

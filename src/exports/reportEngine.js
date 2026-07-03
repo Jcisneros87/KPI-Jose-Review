@@ -12,7 +12,8 @@
  * from the template and are left untouched.
  *
  * The patch helpers are environment-agnostic (Node tests + browser); the
- * generateCtrReport() entry point is browser-only.
+ * generateExecutiveReport() entry point is browser-only and serves both
+ * report types via the REPORT_TYPES registry.
  */
 
 import { computePerformanceKpis } from '../engines/kpiEngine.js';
@@ -23,8 +24,18 @@ import { computePerformanceKpis } from '../engines/kpiEngine.js';
  * the internal part paths are identical.
  */
 export const REPORT_TYPES = {
-  ctr: { volumeLabel: 'CTRs Completed', subject: 'CTR Filing Performance', template: 'template/ctr-executive-master.pptx' },
-  sar: { volumeLabel: 'SARs Completed', subject: 'SAR Filing Performance', template: 'template/sar-executive-master.pptx' },
+  ctr: {
+    volumeLabel: 'CTRs Completed',
+    subject: 'CTR Filing Performance',
+    template: 'template/ctr-executive-master.pptx',
+    defaultGoals: { internalTargetDays: 5, regulatoryThresholdDays: 15 },
+  },
+  sar: {
+    volumeLabel: 'SARs Completed',
+    subject: 'SAR Filing Performance',
+    template: 'template/sar-executive-master.pptx',
+    defaultGoals: { internalTargetDays: 21, regulatoryThresholdDays: 30 },
+  },
 };
 
 // Part paths inside the master templates (see tools/build-master-template.mjs)
@@ -194,7 +205,9 @@ export async function buildEmbeddedWorkbook(JSZipClass, columns) {
 export function buildReportData(model, config, type = 'ctr') {
   const T = REPORT_TYPES[type];
   if (!T) throw new Error(`Unknown report type: ${type}`);
-  const g = model.goals || { internalTargetDays: 5, regulatoryThresholdDays: 15 };
+  // Fallback goals must match the report type (a goal-less SAR model must
+  // never inherit CTR's 5/15-day bounds) — codex review fix.
+  const g = model.goals || T.defaultGoals;
   const m = model.monthly;
   const months = m.map((x) => x.label);
   const perf = computePerformanceKpis(m, g.internalTargetDays, g.regulatoryThresholdDays);
