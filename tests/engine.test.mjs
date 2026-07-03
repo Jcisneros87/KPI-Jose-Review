@@ -214,6 +214,15 @@ test('goal-based performance KPIs: % of internal goal, day deltas, dual-bound st
   assert.equal(computePerformanceKpis([mk(5), mk(9)], 5, 15).meetsGoal, false);
 });
 
+test('missing goal config yields info status, not a compliance color (codex fix)', () => {
+  const mk = (avg) => ({ avgFilingDaysEff: avg, completedFilings: 10 });
+  const perf = computePerformanceKpis([mk(4), mk(6)], null, null);
+  assert.equal(perf.monthlyPerformanceStatus, 'info');
+  assert.equal(perf.historicalStatus, 'info');
+  assert.equal(perf.monthlyPerformancePct, null);
+  assert.equal(computePerformanceKpis([mk(4), mk(6)], undefined).monthlyPerformanceStatus, 'info');
+});
+
 test('performance KPI cards: monthly %, MoM variance, 12-month historical', () => {
   const mk = (avg) => ({ avgFilingDaysEff: avg, completedFilings: 10 });
   // 13 months: twelve at 12 days, current at 13.8 days, target 15

@@ -116,17 +116,62 @@ test('only data parts change — template formatting is untouched', async () => 
     'exactly the chart, workbook, and slide text may change');
 });
 
-test('patch helpers: escaping and null gaps', async () => {
-  const xml = '<c:ser><c:cat><c:strRef><c:f>Sheet1!$A$2:$A$3</c:f><c:strCache><c:ptCount val="2"/><c:pt idx="0"><c:v>x</c:v></c:pt></c:strCache></c:strRef></c:cat>' +
-    '<c:val><c:numRef><c:f>Sheet1!$B$2:$B$3</c:f><c:numCache><c:formatCode>0.0</c:formatCode><c:ptCount val="2"/></c:numCache></c:numRef></c:val></c:ser>';
-  const out = patchChartXml(xml, ['A & B', 'C<D'], [[1.5, null]]);
+const MINI_SER = (name) =>
+  `<c:ser><c:tx><c:strRef><c:f>Sheet1!$B$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${name}</c:v></c:pt></c:strCache></c:strRef></c:tx>` +
+  '<c:cat><c:strRef><c:f>Sheet1!$A$2:$A$3</c:f><c:strCache><c:ptCount val="2"/><c:pt idx="0"><c:v>x</c:v></c:pt></c:strCache></c:strRef></c:cat>' +
+  '<c:val><c:numRef><c:f>Sheet1!$B$2:$B$3</c:f><c:numCache><c:formatCode>0.0</c:formatCode><c:ptCount val="2"/></c:numCache></c:numRef></c:val></c:ser>';
+
+test('patch helpers: escaping, gaps, and legend-name injection', async () => {
+  const out = patchChartXml(MINI_SER('Old Name'), ['A & B', 'C<D'], [{ name: 'Goal (4 & 5 Days)', values: [1.5, null] }]);
   assert.ok(out.includes('A &amp; B') && out.includes('C&lt;D'), 'months are XML-escaped');
+  assert.ok(out.includes('Goal (4 &amp; 5 Days)') && !out.includes('Old Name'), 'series name/legend rewritten');
   assert.ok(out.includes('<c:v>1.5</c:v>'));
   assert.ok(!out.includes('idx="1"><c:v></c:v>'), 'null renders as a gap, not an empty value');
   assert.ok(out.includes('<c:formatCode>0.0</c:formatCode>'), 'format code preserved');
   assert.equal(patchSlideTokens('<a:t>{{X}}</a:t>', { X: 'a<b&c' }), '<a:t>a&lt;b&amp;c</a:t>');
   const wb = await buildEmbeddedWorkbook(JSZip, [{ header: 'Month', values: ['Jan'] }, { header: 'N', values: [3] }]);
   assert.ok(wb.length > 500, 'workbook builds');
+});
+
+test('non-finite numbers never reach chart caches or workbook cells (codex fix)', async () => {
+  const out = patchChartXml(MINI_SER('S'), ['a', 'b', 'c'], [{ values: [NaN, Infinity, 2] }]);
+  assert.ok(!out.includes('NaN') && !out.includes('Infinity'), 'non-finite values omitted from cache');
+  assert.ok(out.includes('<c:pt idx="2"><c:v>2</c:v></c:pt>'), 'finite value survives at its index');
+  const wb = await JSZip.loadAsync(await buildEmbeddedWorkbook(JSZip, [
+    { header: 'Month', values: ['Jan', 'Feb'] }, { header: 'N', values: [NaN, 4] },
+  ]));
+  const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+  assert.ok(!sheet.includes('NaN'), 'NaN omitted from workbook');
+  assert.ok(sheet.includes('<c r="B3"><v>4</v></c>'));
+});
+
+test('incompatible chart XML fails hard, never a silent partial patch (codex fix)', () => {
+  // more expected series than the chart has
+  assert.throws(() => patchChartXml(MINI_SER('S'), ['a'], [{ values: [1] }, { values: [2] }]),
+    /expected 2 series, found 1/);
+  // missing numCache
+  const noVal = MINI_SER('S').replace(/<c:numCache>[\s\S]*?<\/c:numCache>/, '');
+  assert.throws(() => patchChartXml(noVal, ['a'], [{ values: [1] }]), /no value cache/);
+  // missing category cache
+  const noCat = MINI_SER('S').replace(/<c:cat>[\s\S]*?<\/c:cat>/, '<c:cat></c:cat>');
+  assert.throws(() => patchChartXml(noCat, ['a'], [{ values: [1] }]), /no category cache/);
+});
+
+test('configurable goals flow into legend labels, workbook headers, and constants (codex fix)', async () => {
+  const model = sampleModel();
+  model.goals = { ...model.goals, internalTargetDays: 4, regulatoryThresholdDays: 12 };
+  const zip = await injectReport(await loadMaster(), JSZip, model, {});
+  const chart = await zip.file(CHART_PART).async('string');
+  assert.ok(chart.includes('Regulatory Deadline (12 Days)') && chart.includes('Internal Goal (4 Days)'),
+    'legend labels track configured goals');
+  assert.ok(!chart.includes('(15 Days)') && !chart.includes('(5 Days)'), 'template default labels replaced');
+  const sers = chart.match(/<c:ser>[\s\S]*?<\/c:ser>/g);
+  assert.equal((sers[2].match(/<c:v>12<\/c:v>/g) || []).length, 13);
+  assert.equal((sers[3].match(/<c:v>4<\/c:v>/g) || []).length, 13);
+  const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
+  const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+  assert.ok(sheet.includes('Regulatory Deadline (12 Days)') && sheet.includes('Internal Goal (4 Days)'),
+    'workbook headers match legend labels');
 });
 
 test('buildReportData produces the spec token set', () => {

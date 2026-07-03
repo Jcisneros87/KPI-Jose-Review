@@ -30,43 +30,80 @@ export function xmlEscape(s) {
 }
 
 /**
- * Replace the cached data points of every <c:ser> in a chart XML part, in
- * document order. seriesValues[i] is the value array for series i (null =
- * gap). Category months are applied to every series; series names (c:tx),
- * styling, and axes are untouched. Formula ranges are re-rowed to the data
- * length so Edit Data stays aligned with the rewritten workbook.
+ * Replace the cached data of every <c:ser> in a chart XML part, in document
+ * order. seriesData[i] = { name?, values } — values entries that are not
+ * finite numbers render as gaps; when name is given the series-name cache
+ * (<c:tx>, i.e. the legend / Edit Data header) is rewritten too, keeping
+ * legend labels in sync with configurable goal values. Styling and axes are
+ * untouched; formula ranges are re-rowed to the data length.
+ *
+ * Throws if any provided series cannot be fully patched (fewer <c:ser>
+ * nodes than expected, or missing cat/val cache structures) — a partially
+ * injected report must never be produced silently.
  */
-export function patchChartXml(chartXml, months, seriesValues) {
+export function patchChartXml(chartXml, months, seriesData) {
   let si = 0;
-  return chartXml.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, (ser) => {
-    const vals = seriesValues[si++];
-    if (!vals) return ser;
+  const result = chartXml.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, (ser) => {
+    const s = seriesData[si];
+    if (!s) { si++; return ser; }
+    const idx = si++;
     const pts = months.map((mm, i) => `<c:pt idx="${i}"><c:v>${xmlEscape(mm)}</c:v></c:pt>`).join('');
+    let out = ser;
+
+    // Matched flags (not string comparison — an injected value identical to
+    // the existing one must not read as "structure missing").
+    if (s.name != null) {
+      let nameMatched = false;
+      out = out.replace(
+        /(<c:tx>[\s\S]*?)<c:strCache>[\s\S]*?<\/c:strCache>([\s\S]*?<\/c:tx>)/,
+        (whole, a, b) => {
+          nameMatched = true;
+          return `${a}<c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${xmlEscape(s.name)}</c:v></c:pt></c:strCache>${b}`;
+        }
+      );
+      if (!nameMatched) throw new Error(`Chart XML incompatible: series ${idx + 1} has no name cache (<c:tx>) to patch`);
+    }
+
     // Categories may be cached as plain strCache or (PptxGenJS) multiLvlStrCache
-    let out = ser.replace(
+    let catMatched = false;
+    out = out.replace(
       /(<c:cat>[\s\S]*?)<c:strCache>[\s\S]*?<\/c:strCache>([\s\S]*?<\/c:cat>)/,
-      (whole, before, after) =>
-        `${before}<c:strCache><c:ptCount val="${months.length}"/>${pts}</c:strCache>${after}`
+      (whole, before, after) => {
+        catMatched = true;
+        return `${before}<c:strCache><c:ptCount val="${months.length}"/>${pts}</c:strCache>${after}`;
+      }
     );
     out = out.replace(
       /(<c:cat>[\s\S]*?)<c:multiLvlStrCache>[\s\S]*?<\/c:multiLvlStrCache>([\s\S]*?<\/c:cat>)/,
-      (whole, before, after) =>
-        `${before}<c:multiLvlStrCache><c:ptCount val="${months.length}"/><c:lvl>${pts}</c:lvl></c:multiLvlStrCache>${after}`
+      (whole, before, after) => {
+        catMatched = true;
+        return `${before}<c:multiLvlStrCache><c:ptCount val="${months.length}"/><c:lvl>${pts}</c:lvl></c:multiLvlStrCache>${after}`;
+      }
     );
+    if (!catMatched) throw new Error(`Chart XML incompatible: series ${idx + 1} has no category cache to patch`);
+
+    let valMatched = false;
     out = out.replace(
       /(<c:val>[\s\S]*?<c:numCache>)[\s\S]*?(<\/c:numCache>[\s\S]*?<\/c:val>)/,
       (whole, before, after) => {
+        valMatched = true;
         const fmt = (whole.match(/<c:formatCode>[^<]*<\/c:formatCode>/) || ['<c:formatCode>General</c:formatCode>'])[0];
         return before + fmt +
-          `<c:ptCount val="${vals.length}"/>` +
-          vals.map((v, i) => (v == null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`)).join('') +
+          `<c:ptCount val="${s.values.length}"/>` +
+          s.values.map((v, i) => (Number.isFinite(v) ? `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>` : '')).join('') +
           after;
       }
     );
+    if (!valMatched) throw new Error(`Chart XML incompatible: series ${idx + 1} has no value cache (numCache) to patch`);
+
     // data ranges always start at row 2 (row 1 = headers)
     out = out.replace(/(\$[A-Z]+\$)2:(\$[A-Z]+\$)\d+/g, (whole, a, b) => `${a}2:${b}${months.length + 1}`);
     return out;
   });
+  if (si < seriesData.length) {
+    throw new Error(`Chart XML incompatible: expected ${seriesData.length} series, found ${si}`);
+  }
+  return result;
 }
 
 /** Replace {{TOKEN}} placeholders in slide XML with escaped values. */
@@ -95,7 +132,10 @@ export async function buildEmbeddedWorkbook(JSZipClass, columns) {
     sheetRows += `<row r="${r + 2}">` + columns.map((c, ci) => {
       const v = c.values[r];
       if (v == null || v === '') return '';
-      if (typeof v === 'number') return `<c r="${colLetter(ci)}${r + 2}"><v>${v}</v></c>`;
+      // non-finite numbers (NaN/Infinity) would corrupt numeric cells — omit
+      if (typeof v === 'number') {
+        return Number.isFinite(v) ? `<c r="${colLetter(ci)}${r + 2}"><v>${v}</v></c>` : '';
+      }
       return `<c r="${colLetter(ci)}${r + 2}" t="inlineStr"><is><t>${xmlEscape(v)}</t></is></c>`;
     }).join('') + '</row>';
   }
@@ -148,18 +188,17 @@ export function buildReportData(model, config) {
   const months = m.map((x) => x.label);
   const perf = computePerformanceKpis(m, g.internalTargetDays, g.regulatoryThresholdDays);
 
-  const seriesValues = [
-    m.map((x) => x.completedFilings ?? 0),
-    m.map((x) => x.avgFilingDaysEff),
-    months.map(() => g.regulatoryThresholdDays),
-    months.map(() => g.internalTargetDays),
+  // Series names double as legend labels AND workbook headers — injected on
+  // every export so they always reflect the goal values active in config.
+  const seriesData = [
+    { name: 'CTRs Completed', values: m.map((x) => x.completedFilings ?? 0) },
+    { name: 'Avg Filing Days', values: m.map((x) => x.avgFilingDaysEff) },
+    { name: `Regulatory Deadline (${g.regulatoryThresholdDays} Days)`, values: months.map(() => g.regulatoryThresholdDays) },
+    { name: `Internal Goal (${g.internalTargetDays} Days)`, values: months.map(() => g.internalTargetDays) },
   ];
   const columns = [
     { header: 'Month', values: months },
-    { header: 'CTRs Completed', values: seriesValues[0] },
-    { header: 'Avg Filing Days', values: seriesValues[1] },
-    { header: `Regulatory Deadline (${g.regulatoryThresholdDays} Days)`, values: seriesValues[2] },
-    { header: `Internal Goal (${g.internalTargetDays} Days)`, values: seriesValues[3] },
+    ...seriesData.map((s) => ({ header: s.name, values: s.values })),
   ];
   const tokens = {
     REPORT_TITLE: 'BSA/AML Department',
@@ -176,7 +215,7 @@ export function buildReportData(model, config) {
     KPI_HIST: perf.historicalAvgDays == null ? '—' : `${perf.historicalAvgDays} Days`,
     KPI_HIST_NOTE: perf.historicalAvgDays == null ? '' : `Rolling average · ${perf.historicalPct}% of goal`,
   };
-  return { months, seriesValues, columns, tokens, perf };
+  return { months, seriesData, columns, tokens, perf };
 }
 
 /**
@@ -184,10 +223,10 @@ export function buildReportData(model, config) {
  * Shared by the browser entry point and Node verification.
  */
 export async function injectReport(zip, JSZipClass, model, config) {
-  const { months, seriesValues, columns, tokens } = buildReportData(model, config);
+  const { months, seriesData, columns, tokens } = buildReportData(model, config);
 
   const chartXml = await zip.file(CHART_PART).async('string');
-  zip.file(CHART_PART, patchChartXml(chartXml, months, seriesValues));
+  zip.file(CHART_PART, patchChartXml(chartXml, months, seriesData));
 
   zip.file(WORKBOOK_PART, await buildEmbeddedWorkbook(JSZipClass, columns));
 

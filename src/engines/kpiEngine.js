@@ -344,7 +344,10 @@ export function summarize(records) {
  */
 export function computePerformanceKpis(monthly, goalDays, regulatoryDays = goalDays) {
   const dayStatus = (days) =>
-    days == null ? 'info' : days <= goalDays ? 'green' : days <= regulatoryDays ? 'yellow' : 'red';
+    days == null || goalDays == null ? 'info'
+      : days <= goalDays ? 'green'
+      : regulatoryDays != null && days <= regulatoryDays ? 'yellow'
+      : 'red';
   const pctOfGoal = (days) =>
     days == null || !goalDays ? null : Math.round((days / goalDays) * 100);
 
