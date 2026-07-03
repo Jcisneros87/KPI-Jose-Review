@@ -9,17 +9,28 @@ Built to the consolidated specification in
 [`docs/Altura-BSA-KPI-Project-Specification.md`](docs/Altura-BSA-KPI-Project-Specification.md)
 (SRS Chapters 1–16 + TDD Chapter 1).
 
-## Run
+## Run on any computer
 
-No build step. Serve the folder over HTTP (ES modules and config fetches
-cannot load from `file://`):
+The app is fully self-contained — all libraries are vendored in `vendor/`,
+so **no internet connection is needed** after you have the folder.
 
-```bash
-cd altura-bsa-kpi
-python3 -m http.server 8080     # or: npm start
-```
+1. Get the folder onto the machine: `git clone`, GitHub → Code → **Download
+   ZIP** (then unzip), or copy it from a USB drive / network share.
+2. Double-click the launcher:
+   - **macOS:** `Start Dashboard.command`
+     (first time: right-click → Open, or run `xattr -d com.apple.quarantine "Start Dashboard.command"` if Gatekeeper blocks it)
+   - **Windows:** `Start Dashboard.bat`
+3. The dashboard opens at <http://localhost:8137>. Close the server window to stop.
 
-Open <http://localhost:8080>, then either:
+The only prerequisite is **Python 3 or Node.js** (either one) — the launcher
+finds whichever is installed. A local HTTP server is required because
+browsers block config/template fetches from `file://`; nothing is ever sent
+off the machine — all CSV processing happens client-side.
+
+Manual alternative: `python3 -m http.server 8080` (or `npm start`, or
+`node tools/serve.mjs`) in the folder, then open the printed URL.
+
+Once running, either:
 
 - **Load Sample Data** (header button) — bundled 14-month CTR/SAR datasets, or
 - **Import CTR CSV / Import SAR CSV** — real Verafin exports with the
