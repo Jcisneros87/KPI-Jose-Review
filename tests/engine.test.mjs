@@ -278,6 +278,40 @@ test('alert workflows classify per spec: review / case / sar / open', () => {
   assert.equal(by.O1.dInvestigationDays, null);
 });
 
+test('alert edge cases: inconsistent date/flag combinations (codex fix)', () => {
+  const rows = [
+    // Disposition without Investigated: closed at review via fallback, not still-open
+    alertRow({ 'Alert ID': 'DISP_NO_INV', 'Disposition Date': '02/10/2026' }),
+    // Ack + disposition + investigated: case, completion = disposition, no double count
+    alertRow({ 'Alert ID': 'ACK_THEN_CASE', 'Acknowledgement Date': '01/03/2026', 'Investigated': 'Yes', 'Disposition Date': '02/10/2026' }),
+    // Ack + disposition, NOT investigated: review, completion = acknowledgement
+    alertRow({ 'Alert ID': 'ACK_AND_DISP', 'Acknowledgement Date': '01/04/2026', 'Disposition Date': '02/15/2026' }),
+  ];
+  const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
+  const by = Object.fromEntries(records.map((r) => [r.reportNumber, r]));
+
+  assert.equal(by.DISP_NO_INV.alertWorkflow, 'review');
+  assert.equal(by.DISP_NO_INV.statusCategory, 'completed', 'disposed row is not still-open');
+  assert.equal(by.DISP_NO_INV.dInvestigationDays, 39);      // 01/02 → 02/10 fallback
+
+  assert.equal(by.ACK_THEN_CASE.alertWorkflow, 'case');
+  assert.equal(by.ACK_THEN_CASE.dInvestigationDays, 39);    // disposition governs, ack ignored
+
+  assert.equal(by.ACK_AND_DISP.alertWorkflow, 'review');
+  assert.equal(by.ACK_AND_DISP.dInvestigationDays, 2);      // acknowledgement governs
+
+  // funnel: nothing lands in stillOpen; each row buckets exactly once
+  const monthly = aggregateAlertsMonthly(records, ['2026-01', '2026-02']);
+  const jan = monthly[0];
+  assert.equal(jan.created, 3);
+  assert.equal(jan.stillOpen, 0);
+  assert.equal(jan.closedAtAlert, 2);
+  assert.equal(jan.escalatedToCase, 1);
+  // completion-month buckets: reviews split Jan/Feb, case in Feb
+  assert.equal(monthly[0].reviewCompleted + monthly[1].reviewCompleted, 2);
+  assert.equal(monthly[1].caseCompleted, 1);
+});
+
 test('alert aggregation: perf series by completion month, funnel by creation cohort', () => {
   const rows = [
     alertRow({ 'Alert ID': 'R1', 'Acknowledgement Date': '01/05/2026' }),                                       // created+done Jan

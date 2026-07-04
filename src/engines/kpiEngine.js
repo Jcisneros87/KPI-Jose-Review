@@ -111,7 +111,12 @@ export function computeDurations(rec, type) {
     //  sar    — investigated, SAR filed; complete at Disposition Date
     rec.workflowStart = rec.creationDate;
     rec.alertWorkflow = !rec.investigated ? 'review' : rec.sarFiled ? 'sar' : 'case';
-    rec.completionDate = rec.alertWorkflow === 'review' ? rec.acknowledgementDate : rec.dispositionDate;
+    // Review completion falls back to Disposition Date when Acknowledgement
+    // is absent — a disposed-but-uninvestigated row is closed, not still
+    // open (codex review fix for inconsistent source data).
+    rec.completionDate = rec.alertWorkflow === 'review'
+      ? (rec.acknowledgementDate || rec.dispositionDate)
+      : rec.dispositionDate;
     rec.dInvestigationDays = daysBetween(rec.creationDate, rec.completionDate);
     rec.statusCategory = rec.completionDate ? 'completed' : 'open';
     return rec;
