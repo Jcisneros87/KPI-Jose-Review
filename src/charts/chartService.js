@@ -265,6 +265,18 @@ export function performanceTrend({ months, volume, avgDays, goalLines = [], volu
   return opt;
 }
 
+/**
+ * Alert outcomes funnel: stacked outcome columns with an average-days line
+ * on the right axis (Alerts module executive trend slide).
+ */
+export function stackedVolumeWithDaysLine({ months, stacks, line }) {
+  const opt = base(months);
+  opt.yAxis = [valueAxis('Alerts'), valueAxis('Days', { extra: { splitLine: { show: false } } })];
+  opt.series = stacks.map((s) => columnSeries(s, { stacked: true }));
+  opt.series.push(lineSeries({ ...line }, { yAxisIndex: 1 }));
+  return opt;
+}
+
 /** Multi-line chart (Executive filing-time performance). */
 export function multiLine({ months, lines, yName = 'Days', goalLines }) {
   const opt = base(months);

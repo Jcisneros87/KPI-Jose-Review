@@ -157,7 +157,73 @@ MONTHS.forEach((monthStart, mi) => {
   }
 });
 
+// ------------------------------------------------------------------ Alerts
+
+const MODULES = {
+  'Structuring': ['Cash Structuring Detection', 'Funnel Account Analytic'],
+  'Wire Fraud': ['High-Risk Wire Pattern', 'Unusual Wire Velocity'],
+  'ACH Fraud': ['ACH Return Anomaly', 'New Payee Burst'],
+  'Cash Intensive Business': ['Cash Deposit Deviation', 'Business Cash Ratio'],
+  'Human Trafficking': ['Late-Night Card Pattern', 'Multi-City Cash Activity'],
+  'Terrorist Financing': ['High-Risk Geography Transfer', 'Charity Flow Anomaly'],
+};
+const RISKS = ['High', 'Medium', 'Low'];
+const RESULT_STATES = {
+  review: ['Not Suspicious', 'Expected Activity', 'False Positive'],
+  caseNoSar: ['Case Closed - No SAR', 'Investigated - Not Reportable'],
+  caseSar: ['SAR Filed'],
+};
+
+const alertHeaders = ['Alert ID', 'Creation Date', 'Acknowledgement Date', 'Disposition Date', 'Owner Name', 'Assigned Owner Username', 'Product', 'Module', 'Analytic', 'Risk', 'Alert State', 'Result State', 'Branch Number', 'SAR Filed', 'Investigated'];
+const alertRows = [];
+let alertSeq = 90001;
+const username = (name) => name.toLowerCase().replace(/[^a-z ]/g, '').split(' ').map((w, i) => i === 0 ? w[0] : w).join('');
+
+MONTHS.forEach((monthStart, mi) => {
+  const volume = between(160, 260);
+  const isCurrentish = mi >= 12;
+  for (let n = 0; n < volume; n++) {
+    const creation = addDays(monthStart, between(0, 27));
+    const owner = pick(OWNERS);
+    const module_ = pick(Object.keys(MODULES));
+    const roll = rand();
+    let investigated = false, sarFiled = false, ack = null, disp = null, alertState = 'Closed', resultState = '';
+    if (isCurrentish && roll < 0.12) {
+      alertState = 'Open';                                   // still in queue
+    } else if (roll < 0.78) {
+      ack = addDays(creation, between(0, rand() < 0.15 * drift(mi) ? 14 : 6));   // review-only
+      resultState = pick(RESULT_STATES.review);
+    } else if (roll < 0.93) {
+      investigated = true;                                    // case, no SAR
+      disp = addDays(creation, between(12, rand() < 0.2 * drift(mi) ? 60 : 45));
+      resultState = pick(RESULT_STATES.caseNoSar);
+    } else {
+      investigated = true; sarFiled = true;                   // SAR-producing
+      disp = addDays(creation, between(20, rand() < 0.2 * drift(mi) ? 85 : 65));
+      resultState = pick(RESULT_STATES.caseSar);
+    }
+    alertRows.push({
+      'Alert ID': `ALERT-${alertSeq++}`,
+      'Creation Date': fmtDate(creation),
+      'Acknowledgement Date': fmtDate(ack),
+      'Disposition Date': fmtDate(disp),
+      'Owner Name': owner,
+      'Assigned Owner Username': username(owner),
+      'Product': 'Verafin',
+      'Module': module_,
+      'Analytic': pick(MODULES[module_]),
+      'Risk': pick(RISKS),
+      'Alert State': alertState,
+      'Result State': resultState,
+      'Branch Number': pick(BRANCHES),
+      'SAR Filed': sarFiled ? 'Yes' : 'No',
+      'Investigated': investigated ? 'Yes' : 'No',
+    });
+  }
+});
+
 mkdirSync(join(root, 'examples'), { recursive: true });
 writeFileSync(join(root, 'examples', 'ctr-sample.csv'), toCsv(ctrHeaders, ctrRows));
 writeFileSync(join(root, 'examples', 'sar-sample.csv'), toCsv(sarHeaders, sarRows));
-console.log(`Wrote examples/ctr-sample.csv (${ctrRows.length} rows) and examples/sar-sample.csv (${sarRows.length} rows)`);
+writeFileSync(join(root, 'examples', 'alerts-sample.csv'), toCsv(alertHeaders, alertRows));
+console.log(`Wrote examples/ctr-sample.csv (${ctrRows.length} rows), examples/sar-sample.csv (${sarRows.length} rows), examples/alerts-sample.csv (${alertRows.length} rows)`);

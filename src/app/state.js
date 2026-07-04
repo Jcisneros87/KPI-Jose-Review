@@ -14,10 +14,12 @@ export const state = {
   data: {
     ctr: null, // { records, fileName, importedAt, warnings, ... }
     sar: null,
+    alerts: null,
   },
   filters: {
     ctr: {},
     sar: {},
+    alerts: {},
     executive: {},
   },
 };

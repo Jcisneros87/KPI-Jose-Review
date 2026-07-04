@@ -1028,3 +1028,45 @@ Completed · Determination→Accepted avg days with Submitted fallback ·
 30-day regulatory deadline · 21-day internal goal), superseding the
 original Phase 2 deferral now that the CTR export is validated. Future
 template-based slides (Alerts, Cases) reuse the same engine.
+
+---
+
+## 15. Alerts KPI Dashboard Expansion (Phase 2 — 2026-07-03)
+
+The Alerts module measures the **alert investigation process** (not regulatory
+filing) as three executive dashboards mirroring how the work is performed,
+plus an outcomes trend — all in the established executive style and all
+exporting through the template-driven reporting engine.
+
+| Dashboard | Cohort | Metric | Report type |
+|---|---|---|---|
+| Alert Review Performance | Not investigated | Creation → Acknowledgement | `alertReview` |
+| Alert-to-Case Performance | Investigated = Yes, SAR Filed = No | Creation → Disposition | `alertCase` |
+| Alert-to-SAR Performance | Investigated = Yes, SAR Filed = Yes | Creation → Disposition | `alertSar` |
+| Alert Outcomes Trend | All (by creation cohort) | Stacked outcomes + avg days line | `alertFunnel` |
+
+- **Data contract** (`config/header-mappings.json → alerts`): Alert ID,
+  Creation/Acknowledgement/Disposition Dates, Owner Name, Assigned Owner
+  Username, Product, Module, Analytic, Risk, Alert State, Result State,
+  Branch Number, SAR Filed, Investigated. Acknowledgement/Disposition are
+  optional (open alerts).
+- **Aggregation semantics:** per-workflow performance series bucket by
+  completion month; funnel outcome counts bucket by creation-month cohort
+  (Closed at Alert Stage + Escalated to Case + Resulted in SAR + Still Open
+  = Created, every month).
+- **KPI cards per workflow:** volume, Avg Investigation Days, MoM Variance
+  (% + day delta), 12-Month Historical. No goal/deadline reference lines —
+  investigation efficiency has no regulatory clock (goals may be added to
+  config later).
+- **Templates:** two new masters from the same corporate template —
+  `alerts-executive-master.pptx` (volume columns + avg-days line; shared by
+  all three workflows via runtime label injection) and
+  `alerts-funnel-executive-master.pptx` (stacked outcomes + line). Embedded
+  workbooks: `Month | <Volume> | Avg Investigation Days` and
+  `Month | Closed at Alert Stage | Escalated to Case | Resulted in SAR |
+  Avg Days to Completion`.
+- **Filters:** Reporting Month, Date Range, Owner Name, Assigned Owner
+  Username, Product, Module, Analytic, Risk, Alert State, Result State,
+  Branch Number — all charts, cards, and exports react.
+- Slide layout parity with CTR/SAR masters is test-enforced (byte-identical
+  corporate slide XML across all masters).

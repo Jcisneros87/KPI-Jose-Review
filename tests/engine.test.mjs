@@ -14,6 +14,7 @@ import {
   parseDate, parseNumber, parseBool, daysBetween, monthKey, rollingMonths,
   validateHeaders, normalizeRecords, filterRecords, aggregateMonthly,
   summarize, latestMonth, computePerformanceKpis,
+  aggregateAlertsMonthly, alertWorkflowSeries,
 } from '../src/engines/kpiEngine.js';
 import { activeGoalVersion, classify, evaluate } from '../src/engines/goalEngine.js';
 import { computeEmployeeStats } from '../src/engines/employeeAnalytics.js';
@@ -246,6 +247,90 @@ test('performance KPI cards: monthly %, MoM variance, 12-month historical', () =
   const empty = computePerformanceKpis([mk(null), mk(null)], 15);
   assert.equal(empty.monthlyPerformanceStatus, 'info');
   assert.equal(empty.momVariancePct, null);
+});
+
+// ---------------------------------------------------------------- alerts module
+
+const alertRow = (overrides = {}) => ({
+  'Alert ID': 'A-1', 'Creation Date': '01/02/2026', 'Acknowledgement Date': '',
+  'Disposition Date': '', 'Owner Name': 'Analyst A', 'Assigned Owner Username': 'aanalyst',
+  'Product': 'Verafin', 'Module': 'Structuring', 'Analytic': 'Cash Structuring Detection',
+  'Risk': 'High', 'Alert State': 'Closed', 'Result State': 'Not Suspicious',
+  'Branch Number': '101', 'SAR Filed': 'No', 'Investigated': 'No', ...overrides,
+});
+
+test('alert workflows classify per spec: review / case / sar / open', () => {
+  const rows = [
+    alertRow({ 'Alert ID': 'R1', 'Acknowledgement Date': '01/05/2026' }),                                      // review: 3 days
+    alertRow({ 'Alert ID': 'C1', 'Investigated': 'Yes', 'Disposition Date': '02/01/2026' }),                    // case: 30 days
+    alertRow({ 'Alert ID': 'S1', 'Investigated': 'Yes', 'SAR Filed': 'Yes', 'Disposition Date': '02/21/2026' }),// sar: 50 days
+    alertRow({ 'Alert ID': 'O1', 'Alert State': 'Open' }),                                                      // open
+  ];
+  const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
+  const by = Object.fromEntries(records.map((r) => [r.reportNumber, r]));
+  assert.equal(by.R1.alertWorkflow, 'review');
+  assert.equal(by.R1.dInvestigationDays, 3);   // Creation → Acknowledgement
+  assert.equal(by.C1.alertWorkflow, 'case');
+  assert.equal(by.C1.dInvestigationDays, 30);  // Creation → Disposition
+  assert.equal(by.S1.alertWorkflow, 'sar');
+  assert.equal(by.S1.dInvestigationDays, 50);
+  assert.equal(by.O1.statusCategory, 'open');
+  assert.equal(by.O1.dInvestigationDays, null);
+});
+
+test('alert aggregation: perf series by completion month, funnel by creation cohort', () => {
+  const rows = [
+    alertRow({ 'Alert ID': 'R1', 'Acknowledgement Date': '01/05/2026' }),                                       // created+done Jan
+    alertRow({ 'Alert ID': 'C1', 'Investigated': 'Yes', 'Disposition Date': '02/10/2026' }),                    // created Jan, done Feb
+    alertRow({ 'Alert ID': 'S1', 'Investigated': 'Yes', 'SAR Filed': 'Yes', 'Disposition Date': '02/20/2026' }),
+    alertRow({ 'Alert ID': 'O1', 'Alert State': 'Open' }),
+  ];
+  const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
+  const monthly = aggregateAlertsMonthly(records, ['2026-01', '2026-02']);
+  const [jan, feb] = monthly;
+  // funnel: all four bucket to their January creation cohort by outcome
+  assert.equal(jan.created, 4);
+  assert.equal(jan.closedAtAlert, 1);
+  assert.equal(jan.escalatedToCase, 1);
+  assert.equal(jan.resultedInSar, 1);
+  assert.equal(jan.stillOpen, 1);
+  assert.equal(jan.closedAtAlert + jan.escalatedToCase + jan.resultedInSar + jan.stillOpen, jan.created);
+  // performance: completions land in their completion months
+  assert.equal(jan.reviewCompleted, 1);
+  assert.equal(jan.reviewAvgDays, 3);
+  assert.equal(feb.caseCompleted, 1);
+  assert.equal(feb.caseAvgDays, 39);   // 01/02 → 02/10
+  assert.equal(feb.sarCompleted, 1);
+  assert.equal(feb.sarAvgDays, 49);    // 01/02 → 02/20
+  assert.equal(feb.totalAvgDays, 44);  // (39+49)/2
+  // workflow series mapper produces the perf-KPI shape
+  const caseSeries = alertWorkflowSeries(monthly, 'case');
+  assert.deepEqual(caseSeries.map((x) => x.completedFilings), [0, 1]);
+  assert.deepEqual(caseSeries.map((x) => x.avgFilingDaysEff), [null, 39]);
+});
+
+test('sample Alerts CSV: outcomes partition every creation cohort', () => {
+  const rows = parseCsv(readFileSync(join(root, 'examples/alerts-sample.csv'), 'utf8'));
+  const { records, errors } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
+  assert.ok(records.length > 2000, `expected >2000 alerts, got ${records.length}`);
+  assert.equal(errors.length, 0);
+  const months = rollingMonths(latestMonth(records), 13);
+  const monthly = aggregateAlertsMonthly(records, months);
+  for (const m of monthly) {
+    assert.equal(m.closedAtAlert + m.escalatedToCase + m.resultedInSar + m.stillOpen, m.created,
+      `month ${m.month} outcomes must partition the creation cohort`);
+  }
+  // workload ordering sanity: reviews resolve faster than cases, cases faster than SAR investigations
+  const avgOf = (key) => {
+    const v = monthly.map((x) => x[key]).filter((x) => x != null);
+    return v.reduce((a, b) => a + b, 0) / v.length;
+  };
+  assert.ok(avgOf('reviewAvgDays') < avgOf('caseAvgDays'), 'review faster than case');
+  assert.ok(avgOf('caseAvgDays') < avgOf('sarAvgDays'), 'case faster than SAR investigation');
+  // alert-specific filters narrow the set
+  const highRisk = filterRecords(records, { risk: 'High' });
+  assert.ok(highRisk.length > 0 && highRisk.length < records.length);
+  assert.ok(highRisk.every((r) => r.risk === 'High'));
 });
 
 // ---------------------------------------------------------------- goal engine

@@ -47,12 +47,78 @@ const PLACE_DAYS = MONTHS.map(() => 99.9);
 
 // ---------------------------------------------------------------- 1. donor chart
 
-async function buildDonorChart(volumeLabel, g) {
+async function buildDonorChart(variant, volumeLabel, g) {
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
   pptx.layout = 'WIDE';
   const s = pptx.addSlide();
-  s.addChart([
+
+  const CHART_BOX = { x: 0.5, y: 0.5, w: 8.25, h: 4.95 };
+  const AXES = (rightTitle) => ({
+    legendPos: 'b', showLegend: true, legendFontSize: 9,
+    catGridLine: { style: 'none' },
+    valAxes: [
+      { showValAxisTitle: true, valAxisTitle: volumeLabel, valGridLine: { color: 'E1E0D9', style: 'solid', size: 0.5 } },
+      { showValAxisTitle: true, valAxisTitle: rightTitle, valGridLine: { style: 'none' }, valAxisMinVal: 0 },
+    ],
+    catAxes: [{}, { catAxisHidden: true }],
+  });
+
+  if (variant === 'investigation') {
+    // Alerts workflow master: volume columns + avg-days line, no goal series
+    s.addChart([
+      {
+        type: pptx.charts.BAR,
+        data: [{ name: volumeLabel, labels: MONTHS, values: PLACE_VOL }],
+        options: {
+          barDir: 'col', barGrouping: 'clustered',
+          chartColors: [hex(S.completedVolume)],
+          showValue: true, dataLabelPosition: 'outEnd', dataLabelFontSize: 8,
+        },
+      },
+      {
+        type: pptx.charts.LINE,
+        data: [{ name: 'Avg Investigation Days', labels: MONTHS, values: PLACE_DAYS }],
+        options: {
+          chartColors: [hex(S.avgFilingDays)],
+          secondaryValAxis: true, secondaryCatAxis: true,
+          lineSize: 2.5, lineSmooth: true, lineDataSymbol: 'circle', lineDataSymbolSize: 9,
+          showValue: true, dataLabelPosition: 't', dataLabelFontSize: 9, dataLabelFormatCode: '0.0',
+        },
+      },
+    ], { ...CHART_BOX, ...AXES('Avg Investigation Days') });
+  } else if (variant === 'funnel') {
+    // Alert outcomes master: stacked outcome columns + avg-days line
+    s.addChart([
+      {
+        type: pptx.charts.BAR,
+        data: [
+          { name: 'Closed at Alert Stage', labels: MONTHS, values: PLACE_VOL },
+          { name: 'Escalated to Case', labels: MONTHS, values: PLACE_VOL },
+          { name: 'Resulted in SAR', labels: MONTHS, values: PLACE_VOL },
+        ],
+        options: {
+          barDir: 'col', barGrouping: 'stacked',
+          chartColors: [hex(S.completedVolume), hex(S.submitted), hex(S.excluded)],
+          showValue: false,
+        },
+      },
+      {
+        type: pptx.charts.LINE,
+        data: [{ name: 'Avg Days to Completion', labels: MONTHS, values: PLACE_DAYS }],
+        options: {
+          chartColors: [hex(S.avgFilingDays)],
+          secondaryValAxis: true, secondaryCatAxis: true,
+          lineSize: 2.5, lineSmooth: true, lineDataSymbol: 'circle', lineDataSymbolSize: 9,
+          showValue: false,
+        },
+      },
+    ], { ...CHART_BOX, ...AXES('Avg Days to Completion'), valAxes: [
+      { showValAxisTitle: true, valAxisTitle: 'Alerts', valGridLine: { color: 'E1E0D9', style: 'solid', size: 0.5 } },
+      { showValAxisTitle: true, valAxisTitle: 'Avg Days to Completion', valGridLine: { style: 'none' }, valAxisMinVal: 0 },
+    ] });
+  } else {
+    s.addChart([
     {
       type: pptx.charts.BAR,
       data: [{ name: volumeLabel, labels: MONTHS, values: PLACE_VOL }],
@@ -94,15 +160,16 @@ async function buildDonorChart(volumeLabel, g) {
     ],
     catAxes: [{}, { catAxisHidden: true }],
   });
+  }
   const buf = await pptx.write({ outputType: 'nodebuffer' });
   return JSZip.loadAsync(buf);
 }
 
 // ---------------------------------------------------------------- 2. build one master per report type
 
-async function buildMaster({ type, volumeLabel, g }) {
+async function buildMaster({ type, variant = 'filing', volumeLabel, g }) {
   const template = await JSZip.loadAsync(readFileSync(join(root, 'template/Example KPI Template.pptx')));
-  const donor = await buildDonorChart(volumeLabel, g);
+  const donor = await buildDonorChart(variant, volumeLabel, g);
 
   // PptxGenJS keeps a global chart counter across instances, so the donor's
   // chart part name varies — locate it dynamically.
@@ -172,10 +239,20 @@ async function buildMaster({ type, volumeLabel, g }) {
   mkdirSync(join(outRoot, 'template'), { recursive: true });
   const fileName = `template/${type}-executive-master.pptx`;
   writeFileSync(join(outRoot, fileName), out);
-  console.log(`Wrote ${fileName} (${out.length} bytes)`);
-  console.log(`  ${volumeLabel} (columns) · Avg Filing Days (line) · ` +
-    `Regulatory Deadline (${g.regulatoryThresholdDays} Days, red dash) · Internal Goal (${g.internalTargetDays} Days, green dash)`);
+  console.log(`Wrote ${fileName} (${out.length} bytes) — variant: ${variant}`);
 }
 
-await buildMaster({ type: 'ctr', volumeLabel: 'CTRs Completed', g: activeGoals.ctr });
-await buildMaster({ type: 'sar', volumeLabel: 'SARs Completed', g: activeGoals.sar });
+const MASTERS = {
+  ctr: { type: 'ctr', variant: 'filing', volumeLabel: 'CTRs Completed', g: activeGoals.ctr },
+  sar: { type: 'sar', variant: 'filing', volumeLabel: 'SARs Completed', g: activeGoals.sar },
+  alerts: { type: 'alerts', variant: 'investigation', volumeLabel: 'Alerts Completed', g: {} },
+  'alerts-funnel': { type: 'alerts-funnel', variant: 'funnel', volumeLabel: 'Alerts', g: {} },
+};
+
+// Build all masters, or only the ones named on the CLI
+// (e.g. `node tools/build-master-template.mjs alerts alerts-funnel`).
+const requested = process.argv.slice(2);
+for (const key of requested.length ? requested : Object.keys(MASTERS)) {
+  if (!MASTERS[key]) throw new Error(`Unknown master: ${key} (valid: ${Object.keys(MASTERS).join(', ')})`);
+  await buildMaster(MASTERS[key]);
+}

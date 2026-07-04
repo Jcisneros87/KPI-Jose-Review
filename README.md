@@ -43,6 +43,7 @@ Once running, either:
 | Executive Dashboard (KPI cards, cross-module trends, leaderboard, goal progress) | `src/dashboards/executive.js` |
 | CTR Dashboard — 5 spec visualizations + compliance benchmarks | `src/dashboards/ctr.js` |
 | SAR Dashboard — Performance Trend + 5 spec visualizations incl. Initial/Continuing + activity analysis, template-driven executive report | `src/dashboards/sar.js` |
+| Alerts Dashboard — three workflow dashboards (Review / Alert-to-Case / Alert-to-SAR) + outcomes trend, each with template-driven executive reports | `src/dashboards/alerts.js` |
 | KPI / Data Processing Engine (pure JS, UI-free) | `src/engines/kpiEngine.js` |
 | Goal Engine — versioned, effective-dated goals (history preserved) | `src/engines/goalEngine.js` |
 | Employee Analytics — balanced 0–100 performance indexes, coaching/recognition flags | `src/engines/employeeAnalytics.js` |

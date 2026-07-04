@@ -12,6 +12,7 @@ import { state, subscribe, setRoute, setRole, setData, can } from './state.js';
 import { renderExecutiveDashboard } from '../dashboards/executive.js';
 import { renderCtrDashboard } from '../dashboards/ctr.js';
 import { renderSarDashboard } from '../dashboards/sar.js';
+import { renderAlertsDashboard } from '../dashboards/alerts.js';
 import { renderGoalsPage } from '../dashboards/goals.js';
 import { renderAuditPage } from '../dashboards/audit.js';
 
@@ -19,11 +20,12 @@ const ROUTES = {
   executive: { label: 'Executive Dashboard', render: renderExecutiveDashboard },
   ctr: { label: 'CTR Dashboard', render: renderCtrDashboard },
   sar: { label: 'SAR Dashboard', render: renderSarDashboard },
+  alerts: { label: 'Alerts Dashboard', render: renderAlertsDashboard },
   goals: { label: 'Goal Management', render: renderGoalsPage },
   audit: { label: 'Audit Log', render: renderAuditPage },
 };
 
-const FUTURE_MODULES = ['Alerts', 'Cases', 'Fraud', 'OFAC', '314(a)', '314(b)'];
+const FUTURE_MODULES = ['Cases', 'Fraud', 'OFAC', '314(a)', '314(b)'];
 
 async function importFile(file, type) {
   try {
@@ -55,7 +57,7 @@ async function importFile(file, type) {
 }
 
 async function loadSampleData() {
-  for (const type of ['ctr', 'sar']) {
+  for (const type of ['ctr', 'sar', 'alerts']) {
     const res = await fetch(`examples/${type}-sample.csv`);
     if (!res.ok) {
       notifyToast(`Sample ${type.toUpperCase()} data not found.`, 'error');
@@ -68,8 +70,8 @@ async function loadSampleData() {
       setData(type, result);
     }
   }
-  auditLog('IMPORT_CSV', 'Bundled sample data (CTR + SAR)', { user: state.role });
-  notifyToast('Sample CTR and SAR datasets loaded.', 'success');
+  auditLog('IMPORT_CSV', 'Bundled sample data (CTR + SAR + Alerts)', { user: state.role });
+  notifyToast('Sample CTR, SAR, and Alerts datasets loaded.', 'success');
 }
 
 function header() {
@@ -83,15 +85,18 @@ function header() {
 
   const ctrInput = el('input', { type: 'file', accept: '.csv', class: 'hidden-input' });
   const sarInput = el('input', { type: 'file', accept: '.csv', class: 'hidden-input' });
+  const alertsInput = el('input', { type: 'file', accept: '.csv', class: 'hidden-input' });
   ctrInput.addEventListener('change', () => ctrInput.files[0] && importFile(ctrInput.files[0], 'ctr').then(() => (ctrInput.value = '')));
   sarInput.addEventListener('change', () => sarInput.files[0] && importFile(sarInput.files[0], 'sar').then(() => (sarInput.value = '')));
+  alertsInput.addEventListener('change', () => alertsInput.files[0] && importFile(alertsInput.files[0], 'alerts').then(() => (alertsInput.value = '')));
 
   const importGroup = can('importCsv')
     ? el('div', { class: 'import-group' },
       el('button', { class: 'btn-header', onclick: () => ctrInput.click() }, '⬆ Import CTR CSV'),
       el('button', { class: 'btn-header', onclick: () => sarInput.click() }, '⬆ Import SAR CSV'),
+      el('button', { class: 'btn-header', onclick: () => alertsInput.click() }, '⬆ Import Alerts CSV'),
       el('button', { class: 'btn-header btn-sample', onclick: loadSampleData }, '◍ Load Sample Data'),
-      ctrInput, sarInput)
+      ctrInput, sarInput, alertsInput)
     : el('div', { class: 'import-group' });
 
   return el('header', { class: 'app-header' },
@@ -145,7 +150,7 @@ function dataStatus() {
     return el('span', { class: `data-chip ${d ? 'loaded' : ''}` },
       `${type.toUpperCase()}: ${d ? `${fmt.num(d.records.length)} records (${d.fileName})` : 'not loaded'}`);
   };
-  return el('div', { class: 'data-status' }, chip('ctr'), chip('sar'));
+  return el('div', { class: 'data-status' }, chip('ctr'), chip('sar'), chip('alerts'));
 }
 
 function render() {

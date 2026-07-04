@@ -104,6 +104,18 @@ export function classifyStatus(record, statusMappings) {
 }
 
 export function computeDurations(rec, type) {
+  if (type === 'alerts') {
+    // Three alert workflows (Alerts module spec):
+    //  review — never investigated; complete at Acknowledgement Date
+    //  case   — investigated, no SAR; complete at Disposition Date
+    //  sar    — investigated, SAR filed; complete at Disposition Date
+    rec.workflowStart = rec.creationDate;
+    rec.alertWorkflow = !rec.investigated ? 'review' : rec.sarFiled ? 'sar' : 'case';
+    rec.completionDate = rec.alertWorkflow === 'review' ? rec.acknowledgementDate : rec.dispositionDate;
+    rec.dInvestigationDays = daysBetween(rec.creationDate, rec.completionDate);
+    rec.statusCategory = rec.completionDate ? 'completed' : 'open';
+    return rec;
+  }
   const start = type === 'ctr' ? rec.creationDate : rec.determinationDate;
   rec.workflowStart = start;
   rec.dStartToQueue = daysBetween(start, rec.queuedDate);
@@ -175,7 +187,7 @@ export function normalizeRecords(rows, type, mappings, statusMappings) {
       }
       seen.add(rec.reportNumber);
     }
-    rec.statusCategory = classifyStatus(rec, statusMappings);
+    if (type !== 'alerts') rec.statusCategory = classifyStatus(rec, statusMappings);
     computeDurations(rec, type);
     records.push(rec);
   });
@@ -199,6 +211,13 @@ export function filterRecords(records, f) {
     if (f.status && r.statusCategory !== f.status) return false;
     if (f.branch && String(r.branch) !== String(f.branch)) return false;
     if (f.queuedBy && r.queuedBy !== f.queuedBy) return false;
+    if (f.ownerUsername && r.ownerUsername !== f.ownerUsername) return false;
+    if (f.product && r.product !== f.product) return false;
+    if (f.module && r.module !== f.module) return false;
+    if (f.analytic && r.analytic !== f.analytic) return false;
+    if (f.risk && r.risk !== f.risk) return false;
+    if (f.alertState && r.alertState !== f.alertState) return false;
+    if (f.resultState && r.resultState !== f.resultState) return false;
     if (f.filingType && f.filingType !== 'combined') {
       const ft = String(r.filingType || '').toLowerCase();
       if (f.filingType === 'initial' && !ft.startsWith('initial')) return false;
@@ -326,6 +345,72 @@ export function summarize(records) {
     onTimePct: pct(onTimeNum.length, onTimeDen.length),
     pastDue: onTimeDen.length - onTimeNum.length,
   };
+}
+
+/**
+ * Alerts monthly aggregation (Alerts module spec — three workflows).
+ * Per-workflow performance series bucket by COMPLETION month (like the
+ * CTR/SAR completed-filings cohort); funnel outcome counts bucket by
+ * CREATION month cohort so leadership sees how each month's alert volume
+ * ultimately resolved; totalAvgDays is the all-workflow average for alerts
+ * completed in the month.
+ */
+export function aggregateAlertsMonthly(records, months) {
+  const byMonth = new Map(months.map((k) => [k, {
+    month: k, label: monthLabel(k), created: 0,
+    closedAtAlert: 0, escalatedToCase: 0, resultedInSar: 0, stillOpen: 0,
+    reviewCompleted: 0, caseCompleted: 0, sarCompleted: 0,
+    _review: [], _case: [], _sar: [], _all: [],
+  }]));
+
+  for (const r of records) {
+    const createdBucket = byMonth.get(monthKey(r.workflowStart));
+    if (createdBucket) {
+      createdBucket.created++;
+      if (!r.completionDate) createdBucket.stillOpen++;
+      else if (r.alertWorkflow === 'review') createdBucket.closedAtAlert++;
+      else if (r.alertWorkflow === 'case') createdBucket.escalatedToCase++;
+      else createdBucket.resultedInSar++;
+    }
+    const doneBucket = byMonth.get(monthKey(r.completionDate));
+    if (doneBucket) {
+      if (r.alertWorkflow === 'review') doneBucket.reviewCompleted++;
+      else if (r.alertWorkflow === 'case') doneBucket.caseCompleted++;
+      else doneBucket.sarCompleted++;
+      if (r.dInvestigationDays != null) {
+        doneBucket[`_${r.alertWorkflow}`].push(r.dInvestigationDays);
+        doneBucket._all.push(r.dInvestigationDays);
+      }
+    }
+  }
+
+  return months.map((k) => {
+    const b = byMonth.get(k);
+    return {
+      month: b.month, label: b.label, created: b.created,
+      closedAtAlert: b.closedAtAlert, escalatedToCase: b.escalatedToCase,
+      resultedInSar: b.resultedInSar, stillOpen: b.stillOpen,
+      reviewCompleted: b.reviewCompleted, reviewAvgDays: avg(b._review),
+      caseCompleted: b.caseCompleted, caseAvgDays: avg(b._case),
+      sarCompleted: b.sarCompleted, sarAvgDays: avg(b._sar),
+      totalAvgDays: avg(b._all),
+    };
+  });
+}
+
+/**
+ * Map one alert workflow's series into the shape computePerformanceKpis and
+ * the reporting engine consume ({completedFilings, avgFilingDaysEff}).
+ */
+export function alertWorkflowSeries(alertMonthly, workflow) {
+  const volKey = `${workflow}Completed`;
+  const avgKey = `${workflow}AvgDays`;
+  return alertMonthly.map((m) => ({
+    month: m.month,
+    label: m.label,
+    completedFilings: m[volKey],
+    avgFilingDaysEff: m[avgKey],
+  }));
 }
 
 /**

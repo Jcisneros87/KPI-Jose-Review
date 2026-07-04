@@ -15,9 +15,12 @@ import JSZip from 'jszip';
 
 import {
   patchChartXml, patchSlideTokens, buildEmbeddedWorkbook, buildReportData,
-  injectReport, CHART_PART, WORKBOOK_PART, SLIDE_PART,
+  injectReport, REPORT_TYPES, CHART_PART, WORKBOOK_PART, SLIDE_PART,
 } from '../src/exports/reportEngine.js';
-import { normalizeRecords, aggregateMonthly, rollingMonths, latestMonth, summarize } from '../src/engines/kpiEngine.js';
+import {
+  normalizeRecords, aggregateMonthly, rollingMonths, latestMonth, summarize,
+  aggregateAlertsMonthly, alertWorkflowSeries, monthLabel,
+} from '../src/engines/kpiEngine.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const mappings = JSON.parse(readFileSync(join(root, 'config/header-mappings.json'), 'utf8'));
@@ -243,6 +246,93 @@ test('template builder regenerates both masters independently (codex coverage ga
       `${type}: reference series named for its own bounds`);
     const slide = await zip.file(SLIDE_PART).async('string');
     assert.ok(slide.includes('{{KPI_MONTHLY}}'), `${type}: slide tokens present`);
+  }
+});
+
+// ---------------------------------------------------------------- alerts reports
+
+function alertModels() {
+  const rows = parseCsv(readFileSync(join(root, 'examples/alerts-sample.csv'), 'utf8'));
+  const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
+  const months = rollingMonths(latestMonth(records), 13);
+  const monthly = aggregateAlertsMonthly(records, months);
+  const base = {
+    currentMonth: months[12],
+    currentMonthLabel: monthLabel(months[12]),
+    dateRangeLabel: `${monthLabel(months[0])} – ${monthLabel(months[12])}`,
+  };
+  return {
+    monthly,
+    review: { ...base, monthly: alertWorkflowSeries(monthly, 'review') },
+    case: { ...base, monthly: alertWorkflowSeries(monthly, 'case') },
+    sar: { ...base, monthly: alertWorkflowSeries(monthly, 'sar') },
+    funnel: { ...base, monthly },
+  };
+}
+
+test('alert investigation report: 2 series, 3-column workbook, no goal lines', async () => {
+  const models = alertModels();
+  const zip = await injectReport(await loadMaster('alerts'), JSZip, models.review, {}, 'alertReview');
+  const chart = await zip.file(CHART_PART).async('string');
+  const sers = chart.match(/<c:ser>[\s\S]*?<\/c:ser>/g);
+  assert.equal(sers.length, 2, 'investigation chart has exactly volume + avg-days series');
+  assert.ok(sers[0].includes('Alerts Completed') && sers[1].includes('Avg Investigation Days'));
+  assert.ok(!chart.includes('Regulatory Deadline') && !chart.includes('Internal Goal'),
+    'no goal/deadline series on investigation reports');
+  const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
+  const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+  const headers = [...sheet.matchAll(/<c r="[A-C]1" t="inlineStr"><is><t>([^<]*)<\/t>/g)].map((m) => m[1]);
+  assert.deepEqual(headers, ['Month', 'Alerts Completed', 'Avg Investigation Days']);
+  assert.ok(!sheet.includes('"D1"'), 'no fourth column');
+  const slide = await zip.file(SLIDE_PART).async('string');
+  assert.ok(!/\{\{[A-Z_]+\}\}/.test(slide), 'no unresolved tokens');
+  assert.ok(slide.includes('Alert Review Performance'), 'subject injected');
+  assert.ok(slide.includes('completed this month'), 'volume note injected');
+});
+
+test('alert workflow reports differ only in labels/data (shared master parity)', async () => {
+  const models = alertModels();
+  const skeletons = {};
+  for (const [key, type, volLabel] of [
+    ['review', 'alertReview', 'Alerts Completed'],
+    ['case', 'alertCase', 'Cases Closed'],
+    ['sar', 'alertSar', 'SAR Alerts'],
+  ]) {
+    const zip = await injectReport(await loadMaster('alerts'), JSZip, models[key], {}, type);
+    const chart = await zip.file(CHART_PART).async('string');
+    assert.ok(chart.includes(volLabel), `${type} volume label injected`);
+    skeletons[key] = chart
+      .replace(/Alerts Completed|Cases Closed|SAR Alerts/g, 'VOLUME')
+      .replace(/<c:v>[^<]*<\/c:v>/g, '<c:v>V</c:v>');
+  }
+  assert.equal(skeletons.review, skeletons.case, 'review/case chart structure identical');
+  assert.equal(skeletons.case, skeletons.sar, 'case/sar chart structure identical');
+});
+
+test('alert funnel report: stacked outcomes + avg-days line, 5-column workbook', async () => {
+  const models = alertModels();
+  const zip = await injectReport(await loadMaster('alerts-funnel'), JSZip, models.funnel, {}, 'alertFunnel');
+  const chart = await zip.file(CHART_PART).async('string');
+  const sers = chart.match(/<c:ser>[\s\S]*?<\/c:ser>/g);
+  assert.equal(sers.length, 4);
+  assert.ok(chart.includes('<c:grouping val="stacked"/>'), 'outcome columns are stacked');
+  for (const name of ['Closed at Alert Stage', 'Escalated to Case', 'Resulted in SAR', 'Avg Days to Completion']) {
+    assert.ok(chart.includes(name), `${name} series present`);
+  }
+  const wb = await JSZip.loadAsync(await zip.file(WORKBOOK_PART).async('uint8array'));
+  const sheet = await wb.file('xl/worksheets/sheet1.xml').async('string');
+  const headers = [...sheet.matchAll(/<c r="[A-E]1" t="inlineStr"><is><t>([^<]*)<\/t>/g)].map((m) => m[1]);
+  assert.deepEqual(headers, ['Month', 'Closed at Alert Stage', 'Escalated to Case', 'Resulted in SAR', 'Avg Days to Completion']);
+  const slide = await zip.file(SLIDE_PART).async('string');
+  assert.ok(!/\{\{[A-Z_]+\}\}/.test(slide));
+  assert.ok(slide.includes('Alert Outcomes Trend'));
+});
+
+test('alert masters share the corporate slide with CTR/SAR (suite-wide layout parity)', async () => {
+  const ctrSlide = await (await loadMaster('ctr')).file(SLIDE_PART).async('string');
+  for (const master of ['alerts', 'alerts-funnel']) {
+    const slide = await (await loadMaster(master)).file(SLIDE_PART).async('string');
+    assert.equal(slide, ctrSlide, `${master} master slide XML byte-identical to CTR master`);
   }
 });
 

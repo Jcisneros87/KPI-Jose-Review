@@ -306,3 +306,6 @@ body.presentation .subtitle-banner { font-size: 1.05rem; }
   body { background: #fff; }
   .app-nav, .filter-bar, .header-actions, .toast-host { display: none; }
 }
+
+/* Alerts module: report button row between stacked perf sections */
+.perf-action { margin: -0.35rem 0 0.4rem; }

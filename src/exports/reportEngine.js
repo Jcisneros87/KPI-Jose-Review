@@ -25,16 +25,49 @@ import { computePerformanceKpis } from '../engines/kpiEngine.js';
  */
 export const REPORT_TYPES = {
   ctr: {
+    kind: 'filing',
+    fileLabel: 'CTR',
     volumeLabel: 'CTRs Completed',
     subject: 'CTR Filing Performance',
     template: 'template/ctr-executive-master.pptx',
     defaultGoals: { internalTargetDays: 5, regulatoryThresholdDays: 15 },
   },
   sar: {
+    kind: 'filing',
+    fileLabel: 'SAR',
     volumeLabel: 'SARs Completed',
     subject: 'SAR Filing Performance',
     template: 'template/sar-executive-master.pptx',
     defaultGoals: { internalTargetDays: 21, regulatoryThresholdDays: 30 },
+  },
+  // Alerts measure investigation efficiency, not regulatory filing — no
+  // goal/deadline reference series; all three workflows share one master.
+  alertReview: {
+    kind: 'investigation',
+    fileLabel: 'Alert-Review',
+    volumeLabel: 'Alerts Completed',
+    subject: 'Alert Review Performance',
+    template: 'template/alerts-executive-master.pptx',
+  },
+  alertCase: {
+    kind: 'investigation',
+    fileLabel: 'Alert-Case',
+    volumeLabel: 'Cases Closed',
+    subject: 'Alert-to-Case Performance',
+    template: 'template/alerts-executive-master.pptx',
+  },
+  alertSar: {
+    kind: 'investigation',
+    fileLabel: 'Alert-SAR',
+    volumeLabel: 'SAR Alerts',
+    subject: 'Alert-to-SAR Performance',
+    template: 'template/alerts-executive-master.pptx',
+  },
+  alertFunnel: {
+    kind: 'funnel',
+    fileLabel: 'Alert-Outcomes',
+    subject: 'Alert Outcomes Trend',
+    template: 'template/alerts-funnel-executive-master.pptx',
   },
 };
 
@@ -201,15 +234,82 @@ export async function buildEmbeddedWorkbook(JSZipClass, columns) {
   return zip.generateAsync({ type: 'uint8array' });
 }
 
+const momToken = (perf) => perf.momVariancePct == null ? '—'
+  : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`;
+const momNote = (perf) => perf.momDeltaDays == null ? ''
+  : perf.momImproving ? `Improved ${Math.abs(perf.momDeltaDays)} Days`
+  : perf.momDeltaDays === 0 ? 'Unchanged vs prior month' : `Slower by ${Math.abs(perf.momDeltaDays)} Days`;
+
 /** Assemble everything a report injection needs from the dashboard model. */
 export function buildReportData(model, config, type = 'ctr') {
   const T = REPORT_TYPES[type];
   if (!T) throw new Error(`Unknown report type: ${type}`);
+  const m = model.monthly;
+  const months = m.map((x) => x.label);
+  const baseTokens = {
+    REPORT_TITLE: 'BSA/AML Department',
+    REPORT_SUBTITLE: `${T.subject} – ${model.currentMonthLabel || ''}`,
+  };
+
+  if (T.kind === 'funnel') {
+    // Alert outcomes trend: stacked outcome columns + avg-days line.
+    // Expects aggregateAlertsMonthly() rows.
+    const seriesData = [
+      { name: 'Closed at Alert Stage', values: m.map((x) => x.closedAtAlert ?? 0) },
+      { name: 'Escalated to Case', values: m.map((x) => x.escalatedToCase ?? 0) },
+      { name: 'Resulted in SAR', values: m.map((x) => x.resultedInSar ?? 0) },
+      { name: 'Avg Days to Completion', values: m.map((x) => x.totalAvgDays) },
+    ];
+    const columns = [
+      { header: 'Month', values: months },
+      ...seriesData.map((s) => ({ header: s.name, values: s.values })),
+    ];
+    const current = m[m.length - 1] || {};
+    const previous = m[m.length - 2] || {};
+    const momPct = previous.created ? Math.round(((current.created - previous.created) / previous.created) * 100) : null;
+    const history = m.slice(0, -1).slice(-12).map((x) => x.created).filter((v) => v != null);
+    const histAvg = history.length ? Math.round(history.reduce((a, b) => a + b, 0) / history.length) : null;
+    const tokens = {
+      ...baseTokens,
+      KPI_MONTHLY: `${current.created ?? 0} Alerts`,
+      KPI_MONTHLY_NOTE: `${current.closedAtAlert ?? 0} closed · ${current.escalatedToCase ?? 0} cases · ${current.resultedInSar ?? 0} SARs`,
+      KPI_MOM: momPct == null ? '—' : `${momPct <= 0 ? '▼' : '▲'} ${Math.abs(momPct)}%`,
+      KPI_MOM_NOTE: 'Alert volume vs prior month',
+      KPI_HIST: histAvg == null ? '—' : `${histAvg} Alerts`,
+      KPI_HIST_NOTE: 'Rolling 12-month average volume',
+    };
+    return { months, seriesData, columns, tokens, perf: null };
+  }
+
+  if (T.kind === 'investigation') {
+    // Alert workflow performance: volume columns + avg investigation days
+    // line, no goal/deadline series (investigation, not filing).
+    const perf = computePerformanceKpis(m, null);
+    const currentVolume = m[m.length - 1]?.completedFilings ?? 0;
+    const seriesData = [
+      { name: T.volumeLabel, values: m.map((x) => x.completedFilings ?? 0) },
+      { name: 'Avg Investigation Days', values: m.map((x) => x.avgFilingDaysEff) },
+    ];
+    const columns = [
+      { header: 'Month', values: months },
+      ...seriesData.map((s) => ({ header: s.name, values: s.values })),
+    ];
+    const tokens = {
+      ...baseTokens,
+      KPI_MONTHLY: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} Days`,
+      KPI_MONTHLY_NOTE: `${currentVolume} completed this month`,
+      KPI_MOM: momToken(perf),
+      KPI_MOM_NOTE: momNote(perf),
+      KPI_HIST: perf.historicalAvgDays == null ? '—' : `${perf.historicalAvgDays} Days`,
+      KPI_HIST_NOTE: 'Rolling 12-month average',
+    };
+    return { months, seriesData, columns, tokens, perf };
+  }
+
+  // kind === 'filing' (CTR/SAR): volume + avg days + goal/deadline series.
   // Fallback goals must match the report type (a goal-less SAR model must
   // never inherit CTR's 5/15-day bounds) — codex review fix.
   const g = model.goals || T.defaultGoals;
-  const m = model.monthly;
-  const months = m.map((x) => x.label);
   const perf = computePerformanceKpis(m, g.internalTargetDays, g.regulatoryThresholdDays);
 
   // Series names double as legend labels AND workbook headers — injected on
@@ -225,17 +325,13 @@ export function buildReportData(model, config, type = 'ctr') {
     ...seriesData.map((s) => ({ header: s.name, values: s.values })),
   ];
   const tokens = {
-    REPORT_TITLE: 'BSA/AML Department',
-    REPORT_SUBTITLE: `${T.subject} – ${model.currentMonthLabel || ''}`,
+    ...baseTokens,
     KPI_MONTHLY: perf.currentAvgDays == null ? '—' : `${perf.currentAvgDays} Days`,
     KPI_MONTHLY_NOTE: perf.currentAvgDays == null
       ? 'No completed filings this month'
       : `${perf.monthlyPerformancePct}% of ${g.internalTargetDays}-day goal ${perf.meetsGoal ? '✓' : '✗'}`,
-    KPI_MOM: perf.momVariancePct == null ? '—'
-      : `${perf.momImproving ? '▼' : perf.momVariancePct === 0 ? '■' : '▲'} ${Math.abs(perf.momVariancePct)}%`,
-    KPI_MOM_NOTE: perf.momDeltaDays == null ? ''
-      : perf.momImproving ? `Improved ${Math.abs(perf.momDeltaDays)} Days`
-      : perf.momDeltaDays === 0 ? 'Unchanged vs prior month' : `Slower by ${Math.abs(perf.momDeltaDays)} Days`,
+    KPI_MOM: momToken(perf),
+    KPI_MOM_NOTE: momNote(perf),
     KPI_HIST: perf.historicalAvgDays == null ? '—' : `${perf.historicalAvgDays} Days`,
     KPI_HIST_NOTE: perf.historicalAvgDays == null ? '' : `Rolling average · ${perf.historicalPct}% of goal`,
   };
@@ -277,7 +373,7 @@ export async function generateExecutiveReport(model, config, type = 'ctr') {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${type.toUpperCase()}-Executive-Report-${model.currentMonth || 'export'}.pptx`;
+  a.download = `${T.fileLabel || type.toUpperCase()}-Executive-Report-${model.currentMonth || 'export'}.pptx`;
   a.click();
   URL.revokeObjectURL(url);
 }

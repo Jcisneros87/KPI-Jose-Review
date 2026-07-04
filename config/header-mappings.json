@@ -27,6 +27,32 @@
       "Branch Number": { "key": "branch", "type": "string" }
     }
   },
+  "alerts": {
+    "anchorField": "creationDate",
+    "required": [
+      "Alert ID", "Creation Date", "Owner Name", "Assigned Owner Username",
+      "Product", "Module", "Analytic", "Risk", "Alert State", "Result State",
+      "Branch Number", "SAR Filed", "Investigated"
+    ],
+    "optional": ["Acknowledgement Date", "Disposition Date"],
+    "fields": {
+      "Alert ID": { "key": "reportNumber", "type": "string" },
+      "Creation Date": { "key": "creationDate", "type": "date" },
+      "Acknowledgement Date": { "key": "acknowledgementDate", "type": "date" },
+      "Disposition Date": { "key": "dispositionDate", "type": "date" },
+      "Owner Name": { "key": "owner", "type": "string" },
+      "Assigned Owner Username": { "key": "ownerUsername", "type": "string" },
+      "Product": { "key": "product", "type": "string" },
+      "Module": { "key": "module", "type": "string" },
+      "Analytic": { "key": "analytic", "type": "string" },
+      "Risk": { "key": "risk", "type": "string" },
+      "Alert State": { "key": "alertState", "type": "string" },
+      "Result State": { "key": "resultState", "type": "string" },
+      "Branch Number": { "key": "branch", "type": "string" },
+      "SAR Filed": { "key": "sarFiled", "type": "boolean" },
+      "Investigated": { "key": "investigated", "type": "boolean" }
+    }
+  },
   "sar": {
     "anchorField": "determinationDate",
     "required": [
