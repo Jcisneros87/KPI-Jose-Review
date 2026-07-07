@@ -4,6 +4,8 @@ node_modules/
 !template/*.pptx
 !template/*.xlsx
 
-# Real production data — NEVER commit (public repo)
-examples/BOT-*
-BOT-*
+# Real production data — NEVER commit (public repo).
+# Case-insensitive, position-independent: catches BOT-, bot_, VERAFIN-BOT-…
+# anywhere in the name. Deliberately broad — a false positive surfaces as a
+# loud "git add" refusal, a leak of real alert data does not.
+*[Bb][Oo][Tt][-_]*

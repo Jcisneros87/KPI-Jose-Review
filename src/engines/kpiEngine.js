@@ -23,14 +23,20 @@ export function parseDate(value) {
   if (value == null) return null;
   const s = String(value).trim();
   if (!s) return null;
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  // Known formats terminate here (parsed or rejected) — only a trailing
+  // time component may follow the date, never arbitrary junk. Reaching the
+  // Date-constructor fallback with a near-miss would roll over invalid
+  // days and guess two-digit centuries.
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]|$)/);
   if (m) return calendarDate(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s|$)/);
   if (m) return calendarDate(+m[3], +m[1], +m[2]);
-  // Verafin alerts export format: 30-Jun-2026 (engine-independent parse)
-  m = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  // Verafin alerts export format: 30-Jun-2026 (engine-independent parse).
+  // Full month names parse by 3-letter prefix; 2-digit years are rejected.
+  m = s.match(/^(\d{1,2})-([A-Za-z]+)-(\d+)$/);
   if (m) {
-    const mo = MONTH_NAMES.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()) + 1;
+    if (m[3].length !== 4) return null;
+    const mo = MONTH_NAMES.findIndex((n) => m[2].toLowerCase().startsWith(n.toLowerCase())) + 1;
     return mo ? calendarDate(+m[3], mo, +m[1]) : null;
   }
   const d = new Date(s);

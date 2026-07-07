@@ -58,6 +58,19 @@ test('date parsing handles Verafin MM/DD/YYYY, DD-Mon-YYYY, and ISO formats', ()
   assert.equal(d.getDate(), 30);
   assert.equal(parseDate('31-Jun-2026'), null); // rolled-over day rejected
   assert.equal(parseDate('30-Xyz-2026'), null); // unknown month rejected
+  assert.equal(monthKey(parseDate('30-JUN-2026')), '2026-06');   // case-insensitive
+  assert.equal(monthKey(parseDate(' 30-Jun-2026 ')), '2026-06'); // trimmed
+  assert.equal(monthKey(parseDate('30-June-2026')), '2026-06');  // full month name
+  assert.equal(parseDate('31-June-2026'), null); // no rollover via full name either
+  assert.equal(parseDate('30-Jun-26'), null);    // 2-digit year rejected (codex fix)
+});
+
+test('near-miss date strings never reach the rollover-prone fallback (codex fix)', () => {
+  assert.equal(parseDate('2026-06-30abc'), null);
+  assert.equal(parseDate('06/30/2026abc'), null);
+  // trailing time components still parse
+  assert.equal(monthKey(parseDate('2026-06-30T07:00:00')), '2026-06');
+  assert.equal(monthKey(parseDate('06/30/2026 08:00')), '2026-06');
 });
 
 test('invalid calendar dates are rejected, not rolled over (codex fix)', () => {
@@ -263,6 +276,31 @@ const alertRow = (overrides = {}) => ({
   'Product': 'Verafin', 'Module': 'Structuring', 'Analytic': 'Cash Structuring Detection',
   'Risk': 'High', 'Alert State': 'Closed', 'Result State': 'Not Suspicious',
   'Branch Number': '101', 'SAR Filed': 'No', 'Investigated': 'No', ...overrides,
+});
+
+test('real Verafin BOT export shape: full-column row with DD-Mon-YYYY dates normalizes', () => {
+  const rows = [alertRow({
+    'Alert Number': 'BOT-1', 'Creation Date': '02-Jan-2026', 'Acknowledgement Date': '05-Jan-2026',
+    'Customer Number': '0002723552', 'Primary Entity Name': 'ENTITY X', 'Customer Name': 'ENTITY X',
+    'Alerted': 'false', 'Under Threshold Test': 'false', 'Risk': '66',
+    'Acknowledgement Note': 'reviewed, no action', 'Acknowledgement Reason': 'Not Suspicious',
+    'Acknowledger Name': 'Analyst B', 'Alert Assignment Date': '03-Jan-2026',
+    'Alert Disposition Time (Mins)': '45', 'Dispositioned By Name': 'Analyst B',
+    'Dispositioned By User Name': 'banalyst',
+  })];
+  const { records, errors } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
+  assert.equal(errors.length, 0);
+  const [r] = records;
+  assert.equal(r.reportNumber, 'BOT-1');
+  assert.equal(monthKey(r.creationDate), '2026-01');
+  assert.equal(r.dInvestigationDays, 3); // DD-Mon-YYYY dates drive the workflow math
+  assert.equal(r.risk, '66');            // numeric risk score kept verbatim as filter value
+  assert.equal(r.acknowledgmentNote, 'reviewed, no action');
+  assert.equal(r.acknowledgmentReason, 'Not Suspicious');
+  assert.equal(r.dispositionByName, 'Analyst B');
+  assert.equal(r.dispositionByUsername, 'banalyst');
+  assert.equal(r.alertDispositionTimeMins, 45);
+  assert.equal(r.underThresholdTest, false);
 });
 
 test('alert workflows classify per spec: review / case / sar / open', () => {
