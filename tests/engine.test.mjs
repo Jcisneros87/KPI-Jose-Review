@@ -252,7 +252,7 @@ test('performance KPI cards: monthly %, MoM variance, 12-month historical', () =
 // ---------------------------------------------------------------- alerts module
 
 const alertRow = (overrides = {}) => ({
-  'Alert ID': 'A-1', 'Creation Date': '01/02/2026', 'Acknowledgement Date': '',
+  'Alert Number': 'A-1', 'Creation Date': '01/02/2026', 'Acknowledgment Date': '',
   'Disposition Date': '', 'Owner Name': 'Analyst A', 'Assigned Owner Username': 'aanalyst',
   'Product': 'Verafin', 'Module': 'Structuring', 'Analytic': 'Cash Structuring Detection',
   'Risk': 'High', 'Alert State': 'Closed', 'Result State': 'Not Suspicious',
@@ -261,15 +261,15 @@ const alertRow = (overrides = {}) => ({
 
 test('alert workflows classify per spec: review / case / sar / open', () => {
   const rows = [
-    alertRow({ 'Alert ID': 'R1', 'Acknowledgement Date': '01/05/2026' }),                                      // review: 3 days
-    alertRow({ 'Alert ID': 'C1', 'Investigated': 'Yes', 'Disposition Date': '02/01/2026' }),                    // case: 30 days
-    alertRow({ 'Alert ID': 'S1', 'Investigated': 'Yes', 'SAR Filed': 'Yes', 'Disposition Date': '02/21/2026' }),// sar: 50 days
-    alertRow({ 'Alert ID': 'O1', 'Alert State': 'Open' }),                                                      // open
+    alertRow({ 'Alert Number': 'R1', 'Acknowledgment Date': '01/05/2026' }),                                      // review: 3 days
+    alertRow({ 'Alert Number': 'C1', 'Investigated': 'Yes', 'Disposition Date': '02/01/2026' }),                    // case: 30 days
+    alertRow({ 'Alert Number': 'S1', 'Investigated': 'Yes', 'SAR Filed': 'Yes', 'Disposition Date': '02/21/2026' }),// sar: 50 days
+    alertRow({ 'Alert Number': 'O1', 'Alert State': 'Open' }),                                                      // open
   ];
   const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
   const by = Object.fromEntries(records.map((r) => [r.reportNumber, r]));
   assert.equal(by.R1.alertWorkflow, 'review');
-  assert.equal(by.R1.dInvestigationDays, 3);   // Creation → Acknowledgement
+  assert.equal(by.R1.dInvestigationDays, 3);   // Creation → Acknowledgment
   assert.equal(by.C1.alertWorkflow, 'case');
   assert.equal(by.C1.dInvestigationDays, 30);  // Creation → Disposition
   assert.equal(by.S1.alertWorkflow, 'sar');
@@ -281,11 +281,11 @@ test('alert workflows classify per spec: review / case / sar / open', () => {
 test('alert edge cases: inconsistent date/flag combinations (codex fix)', () => {
   const rows = [
     // Disposition without Investigated: closed at review via fallback, not still-open
-    alertRow({ 'Alert ID': 'DISP_NO_INV', 'Disposition Date': '02/10/2026' }),
+    alertRow({ 'Alert Number': 'DISP_NO_INV', 'Disposition Date': '02/10/2026' }),
     // Ack + disposition + investigated: case, completion = disposition, no double count
-    alertRow({ 'Alert ID': 'ACK_THEN_CASE', 'Acknowledgement Date': '01/03/2026', 'Investigated': 'Yes', 'Disposition Date': '02/10/2026' }),
+    alertRow({ 'Alert Number': 'ACK_THEN_CASE', 'Acknowledgment Date': '01/03/2026', 'Investigated': 'Yes', 'Disposition Date': '02/10/2026' }),
     // Ack + disposition, NOT investigated: review, completion = acknowledgement
-    alertRow({ 'Alert ID': 'ACK_AND_DISP', 'Acknowledgement Date': '01/04/2026', 'Disposition Date': '02/15/2026' }),
+    alertRow({ 'Alert Number': 'ACK_AND_DISP', 'Acknowledgment Date': '01/04/2026', 'Disposition Date': '02/15/2026' }),
   ];
   const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
   const by = Object.fromEntries(records.map((r) => [r.reportNumber, r]));
@@ -314,10 +314,10 @@ test('alert edge cases: inconsistent date/flag combinations (codex fix)', () => 
 
 test('alert aggregation: perf series by completion month, funnel by creation cohort', () => {
   const rows = [
-    alertRow({ 'Alert ID': 'R1', 'Acknowledgement Date': '01/05/2026' }),                                       // created+done Jan
-    alertRow({ 'Alert ID': 'C1', 'Investigated': 'Yes', 'Disposition Date': '02/10/2026' }),                    // created Jan, done Feb
-    alertRow({ 'Alert ID': 'S1', 'Investigated': 'Yes', 'SAR Filed': 'Yes', 'Disposition Date': '02/20/2026' }),
-    alertRow({ 'Alert ID': 'O1', 'Alert State': 'Open' }),
+    alertRow({ 'Alert Number': 'R1', 'Acknowledgment Date': '01/05/2026' }),                                       // created+done Jan
+    alertRow({ 'Alert Number': 'C1', 'Investigated': 'Yes', 'Disposition Date': '02/10/2026' }),                    // created Jan, done Feb
+    alertRow({ 'Alert Number': 'S1', 'Investigated': 'Yes', 'SAR Filed': 'Yes', 'Disposition Date': '02/20/2026' }),
+    alertRow({ 'Alert Number': 'O1', 'Alert State': 'Open' }),
   ];
   const { records } = normalizeRecords(rows, 'alerts', mappings, statusMappings);
   const monthly = aggregateAlertsMonthly(records, ['2026-01', '2026-02']);

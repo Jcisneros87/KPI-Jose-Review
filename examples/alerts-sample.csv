@@ -1,4 +1,4 @@
-Alert ID,Creation Date,Acknowledgement Date,Disposition Date,Owner Name,Assigned Owner Username,Product,Module,Analytic,Risk,Alert State,Result State,Branch Number,SAR Filed,Investigated
+Alert Number,Creation Date,Acknowledgment Date,Disposition Date,Owner Name,Assigned Owner Username,Product,Module,Analytic,Risk,Alert State,Result State,Branch Number,SAR Filed,Investigated
 ALERT-90001,05/24/2025,05/28/2025,,Luis Herrera,lherrera,Verafin,Structuring,Funnel Account Analytic,Low,Closed,Not Suspicious,101,No,No
 ALERT-90002,05/27/2025,,06/23/2025,James Whitfield,jwhitfield,Verafin,Human Trafficking,Late-Night Card Pattern,High,Closed,Case Closed - No SAR,102,No,Yes
 ALERT-90003,05/21/2025,05/22/2025,,James Whitfield,jwhitfield,Verafin,Wire Fraud,High-Risk Wire Pattern,High,Closed,Expected Activity,125,No,No

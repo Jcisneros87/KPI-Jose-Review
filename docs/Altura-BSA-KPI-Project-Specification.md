@@ -1040,16 +1040,21 @@ exporting through the template-driven reporting engine.
 
 | Dashboard | Cohort | Metric | Report type |
 |---|---|---|---|
-| Alert Review Performance | Not investigated | Creation → Acknowledgement | `alertReview` |
+| Alert Review Performance | Not investigated | Creation → Acknowledgment | `alertReview` |
 | Alert-to-Case Performance | Investigated = Yes, SAR Filed = No | Creation → Disposition | `alertCase` |
 | Alert-to-SAR Performance | Investigated = Yes, SAR Filed = Yes | Creation → Disposition | `alertSar` |
 | Alert Outcomes Trend | All (by creation cohort) | Stacked outcomes + avg days line | `alertFunnel` |
 
-- **Data contract** (`config/header-mappings.json → alerts`): Alert ID,
-  Creation/Acknowledgement/Disposition Dates, Owner Name, Assigned Owner
-  Username, Product, Module, Analytic, Risk, Alert State, Result State,
-  Branch Number, SAR Filed, Investigated. Acknowledgement/Disposition are
-  optional (open alerts).
+- **Data contract** (`config/header-mappings.json → alerts`): matches the
+  full Verafin alerts export (32 columns). Required: Alert Number, Creation
+  Date, Owner Name, Assigned Owner Username, Product, Module, Analytic,
+  Risk, Alert State, Result State, Branch Number, SAR Filed, Investigated.
+  All remaining Verafin columns are optional — including Acknowledgment
+  Date and Disposition Date (open alerts), Customer Number/Name, Primary
+  Entity Name, Alerted, Under Threshold Test, Case/Fraud Resolution,
+  Acknowledgment Note/Reason, Acknowledger Name, Alert Assignment Date,
+  Alert Disposition/Duration/Wait Time (Mins), and Disposition By
+  Name/Username. Risk remains the priority field (mapped to `risk`).
 - **Aggregation semantics:** per-workflow performance series bucket by
   completion month; funnel outcome counts bucket by creation-month cohort
   (Closed at Alert Stage + Escalated to Case + Resulted in SAR + Still Open

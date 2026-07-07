@@ -106,12 +106,12 @@ export function classifyStatus(record, statusMappings) {
 export function computeDurations(rec, type) {
   if (type === 'alerts') {
     // Three alert workflows (Alerts module spec):
-    //  review — never investigated; complete at Acknowledgement Date
+    //  review — never investigated; complete at Acknowledgment Date
     //  case   — investigated, no SAR; complete at Disposition Date
     //  sar    — investigated, SAR filed; complete at Disposition Date
     rec.workflowStart = rec.creationDate;
     rec.alertWorkflow = !rec.investigated ? 'review' : rec.sarFiled ? 'sar' : 'case';
-    // Review completion falls back to Disposition Date when Acknowledgement
+    // Review completion falls back to Disposition Date when Acknowledgment
     // is absent — a disposed-but-uninvestigated row is closed, not still
     // open (codex review fix for inconsistent source data).
     rec.completionDate = rec.alertWorkflow === 'review'
