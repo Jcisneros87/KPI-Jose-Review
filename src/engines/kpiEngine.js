@@ -27,6 +27,12 @@ export function parseDate(value) {
   if (m) return calendarDate(+m[1], +m[2], +m[3]);
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (m) return calendarDate(+m[3], +m[1], +m[2]);
+  // Verafin alerts export format: 30-Jun-2026 (engine-independent parse)
+  m = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if (m) {
+    const mo = MONTH_NAMES.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()) + 1;
+    return mo ? calendarDate(+m[3], mo, +m[1]) : null;
+  }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -106,12 +112,12 @@ export function classifyStatus(record, statusMappings) {
 export function computeDurations(rec, type) {
   if (type === 'alerts') {
     // Three alert workflows (Alerts module spec):
-    //  review — never investigated; complete at Acknowledgment Date
+    //  review — never investigated; complete at Acknowledgement Date
     //  case   — investigated, no SAR; complete at Disposition Date
     //  sar    — investigated, SAR filed; complete at Disposition Date
     rec.workflowStart = rec.creationDate;
     rec.alertWorkflow = !rec.investigated ? 'review' : rec.sarFiled ? 'sar' : 'case';
-    // Review completion falls back to Disposition Date when Acknowledgment
+    // Review completion falls back to Disposition Date when Acknowledgement
     // is absent — a disposed-but-uninvestigated row is closed, not still
     // open (codex review fix for inconsistent source data).
     rec.completionDate = rec.alertWorkflow === 'review'

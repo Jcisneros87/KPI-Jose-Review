@@ -30,17 +30,17 @@
   "alerts": {
     "anchorField": "creationDate",
     "required": [
-      "Alert Number", "Creation Date", "Owner Name", "Assigned Owner Username",
+      "Alert Number", "Creation Date", "Owner Name", "Assigned Owner User Name",
       "Product", "Module", "Analytic", "Risk", "Alert State", "Result State",
       "Branch Number", "SAR Filed", "Investigated"
     ],
     "optional": [
       "Customer Number", "Date", "Primary Entity Name", "Customer Name", "Alerted",
-      "Under Threshold Test", "Case Resolution", "Acknowledgment Note",
-      "Acknowledgment Reason", "Acknowledger Name", "Acknowledgment Date",
+      "Under Threshold Test", "Case Resolution", "Acknowledgement Note",
+      "Acknowledgement Reason", "Acknowledger Name", "Acknowledgement Date",
       "Fraud Resolution", "Alert Assignment Date", "Alert Disposition Time (Mins)",
       "Alert Duration Time (Mins)", "Alert Wait Time (Mins)", "Disposition Date",
-      "Disposition By Name", "Disposition By Username"
+      "Dispositioned By Name", "Dispositioned By User Name"
     ],
     "fields": {
       "Alert Number": { "key": "reportNumber", "type": "string" },
@@ -59,13 +59,13 @@
       "Under Threshold Test": { "key": "underThresholdTest", "type": "boolean" },
       "SAR Filed": { "key": "sarFiled", "type": "boolean" },
       "Investigated": { "key": "investigated", "type": "boolean" },
-      "Assigned Owner Username": { "key": "ownerUsername", "type": "string" },
+      "Assigned Owner User Name": { "key": "ownerUsername", "type": "string" },
       "Case Resolution": { "key": "caseResolution", "type": "string" },
-      "Acknowledgment Note": { "key": "acknowledgmentNote", "type": "string" },
-      "Acknowledgment Reason": { "key": "acknowledgmentReason", "type": "string" },
+      "Acknowledgement Note": { "key": "acknowledgmentNote", "type": "string" },
+      "Acknowledgement Reason": { "key": "acknowledgmentReason", "type": "string" },
       "Owner Name": { "key": "owner", "type": "string" },
       "Acknowledger Name": { "key": "acknowledgerName", "type": "string" },
-      "Acknowledgment Date": { "key": "acknowledgementDate", "type": "date" },
+      "Acknowledgement Date": { "key": "acknowledgementDate", "type": "date" },
       "Branch Number": { "key": "branch", "type": "string" },
       "Fraud Resolution": { "key": "fraudResolution", "type": "string" },
       "Alert Assignment Date": { "key": "alertAssignmentDate", "type": "date" },
@@ -73,8 +73,8 @@
       "Alert Duration Time (Mins)": { "key": "alertDurationTimeMins", "type": "number" },
       "Alert Wait Time (Mins)": { "key": "alertWaitTimeMins", "type": "number" },
       "Disposition Date": { "key": "dispositionDate", "type": "date" },
-      "Disposition By Name": { "key": "dispositionByName", "type": "string" },
-      "Disposition By Username": { "key": "dispositionByUsername", "type": "string" }
+      "Dispositioned By Name": { "key": "dispositionByName", "type": "string" },
+      "Dispositioned By User Name": { "key": "dispositionByUsername", "type": "string" }
     }
   },
   "sar": {

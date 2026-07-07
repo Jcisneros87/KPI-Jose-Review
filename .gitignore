@@ -3,3 +3,7 @@ node_modules/
 *.pptx
 !template/*.pptx
 !template/*.xlsx
+
+# Real production data — NEVER commit (public repo)
+examples/BOT-*
+BOT-*

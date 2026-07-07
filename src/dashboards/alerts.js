@@ -1,7 +1,7 @@
 /**
  * Alerts Performance module (Phase 2): three executive dashboards mirroring
  * how alert work is actually performed, plus an outcomes funnel —
- *   1. Alert Review        (not investigated; Creation → Acknowledgment)
+ *   1. Alert Review        (not investigated; Creation → Acknowledgement)
  *   2. Alert-to-Case       (investigated, no SAR; Creation → Disposition)
  *   3. Alert-to-SAR        (investigated, SAR filed; Creation → Disposition)
  * Investigation efficiency, not regulatory filing — no goal/deadline lines.
@@ -25,7 +25,7 @@ const WORKFLOWS = [
     key: 'review',
     reportType: 'alertReview',
     title: 'Alert Review Performance',
-    subtitle: 'Alerts closed at the alert stage — Creation Date → Acknowledgment Date',
+    subtitle: 'Alerts closed at the alert stage — Creation Date → Acknowledgement Date',
     volumeLabel: 'Alerts Completed',
   },
   {

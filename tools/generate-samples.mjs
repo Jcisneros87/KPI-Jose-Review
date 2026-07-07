@@ -174,7 +174,7 @@ const RESULT_STATES = {
   caseSar: ['SAR Filed'],
 };
 
-const alertHeaders = ['Alert Number', 'Creation Date', 'Acknowledgment Date', 'Disposition Date', 'Owner Name', 'Assigned Owner Username', 'Product', 'Module', 'Analytic', 'Risk', 'Alert State', 'Result State', 'Branch Number', 'SAR Filed', 'Investigated'];
+const alertHeaders = ['Alert Number', 'Creation Date', 'Acknowledgement Date', 'Disposition Date', 'Owner Name', 'Assigned Owner User Name', 'Product', 'Module', 'Analytic', 'Risk', 'Alert State', 'Result State', 'Branch Number', 'SAR Filed', 'Investigated'];
 const alertRows = [];
 let alertSeq = 90001;
 const username = (name) => name.toLowerCase().replace(/[^a-z ]/g, '').split(' ').map((w, i) => i === 0 ? w[0] : w).join('');
@@ -205,10 +205,10 @@ MONTHS.forEach((monthStart, mi) => {
     alertRows.push({
       'Alert Number': `ALERT-${alertSeq++}`,
       'Creation Date': fmtDate(creation),
-      'Acknowledgment Date': fmtDate(ack),
+      'Acknowledgement Date': fmtDate(ack),
       'Disposition Date': fmtDate(disp),
       'Owner Name': owner,
-      'Assigned Owner Username': username(owner),
+      'Assigned Owner User Name': username(owner),
       'Product': 'Verafin',
       'Module': module_,
       'Analytic': pick(MODULES[module_]),
