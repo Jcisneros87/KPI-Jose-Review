@@ -9,6 +9,8 @@
 export const DAY_MS = 86400000;
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
 
 // ---------------------------------------------------------------- parsing
 
@@ -31,15 +33,21 @@ export function parseDate(value) {
   if (m) return calendarDate(+m[1], +m[2], +m[3]);
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s|$)/);
   if (m) return calendarDate(+m[3], +m[1], +m[2]);
+  // Slash dates only ever ship 4-digit years; anything else that looks like
+  // one is malformed — never let the Date fallback century-guess or roll it
+  // over (02/31/26 would otherwise become March 3, 2026).
+  if (/^\d{1,2}\/\d{1,2}\//.test(s)) return null;
   // Verafin DD-Mon format (engine-independent parse). Alerts exports use
   // 4-digit years (30-Jun-2026); CTR/SAR exports use 2-digit (30-Jun-26),
-  // pivoted at 50 (26 → 2026, 99 → 1999). Full month names parse by
-  // 3-letter prefix.
+  // pivoted at 50 (26 → 2026, 99 → 1999). Month must be the exact
+  // abbreviation or full English name.
   m = s.match(/^(\d{1,2})-([A-Za-z]+)-(\d+)$/);
   if (m) {
     if (m[3].length !== 4 && m[3].length !== 2) return null;
     const y = m[3].length === 2 ? +m[3] + (+m[3] < 50 ? 2000 : 1900) : +m[3];
-    const mo = MONTH_NAMES.findIndex((n) => m[2].toLowerCase().startsWith(n.toLowerCase())) + 1;
+    const name = m[2].toLowerCase();
+    const mo = MONTH_NAMES.findIndex((n, i) =>
+      name === n.toLowerCase() || name === MONTH_FULL[i].toLowerCase()) + 1;
     return mo ? calendarDate(y, mo, +m[1]) : null;
   }
   const d = new Date(s);

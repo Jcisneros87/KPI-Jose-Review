@@ -67,6 +67,16 @@ test('date parsing handles Verafin MM/DD/YYYY, DD-Mon-YYYY, and ISO formats', ()
   assert.equal(monthKey(parseDate('5-Feb-26')), '2026-02');
   assert.equal(parseDate('31-Jun-26'), null);    // rollover still rejected
   assert.equal(parseDate('30-Jun-206'), null);   // 3-digit year rejected
+  // century-pivot boundaries and year-length limits (codex review)
+  assert.equal(parseDate('30-Jun-49').getFullYear(), 2049);
+  assert.equal(parseDate('30-Jun-50').getFullYear(), 1950);
+  assert.equal(parseDate('30-Jun-00').getFullYear(), 2000);
+  assert.equal(parseDate('30-Jun-99').getFullYear(), 1999);
+  assert.equal(parseDate('30-Jun-6'), null);     // 1-digit year rejected
+  assert.equal(parseDate('30-Jun-20266'), null); // 5-digit year rejected
+  // month must be the exact abbreviation or full name — no prefix matching
+  assert.equal(parseDate('30-Janet-26'), null);
+  assert.equal(monthKey(parseDate('30-January-2026')), '2026-01');
 });
 
 test('near-miss date strings never reach the rollover-prone fallback (codex fix)', () => {
@@ -75,6 +85,9 @@ test('near-miss date strings never reach the rollover-prone fallback (codex fix)
   // trailing time components still parse
   assert.equal(monthKey(parseDate('2026-06-30T07:00:00')), '2026-06');
   assert.equal(monthKey(parseDate('06/30/2026 08:00')), '2026-06');
+  // slash dates with 2-digit years are malformed, never century-guessed
+  assert.equal(parseDate('02/31/26'), null);
+  assert.equal(parseDate('5/6/26 8:00'), null);
 });
 
 test('invalid calendar dates are rejected, not rolled over (codex fix)', () => {
