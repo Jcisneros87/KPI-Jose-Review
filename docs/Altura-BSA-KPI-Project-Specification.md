@@ -1056,6 +1056,9 @@ exporting through the template-driven reporting engine.
   Acknowledger Name, Alert Assignment Date, Alert Disposition/Duration/Wait
   Time (Mins), and Dispositioned By Name/User Name. Dates arrive as
   DD-Mon-YYYY (e.g. 30-Jun-2026); `parseDate` handles this explicitly.
+  Real CTR/SAR exports use the same format with 2-digit years
+  (30-Jun-26, century-pivoted at 50) plus M/D/YYYY H:MM timestamps for
+  queued/submitted dates — all verified against real BOT exports.
   Risk remains the priority field (mapped to `risk`; numeric scores in the
   real export).
 - **Aggregation semantics:** per-workflow performance series bucket by

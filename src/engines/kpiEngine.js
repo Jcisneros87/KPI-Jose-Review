@@ -31,13 +31,16 @@ export function parseDate(value) {
   if (m) return calendarDate(+m[1], +m[2], +m[3]);
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s|$)/);
   if (m) return calendarDate(+m[3], +m[1], +m[2]);
-  // Verafin alerts export format: 30-Jun-2026 (engine-independent parse).
-  // Full month names parse by 3-letter prefix; 2-digit years are rejected.
+  // Verafin DD-Mon format (engine-independent parse). Alerts exports use
+  // 4-digit years (30-Jun-2026); CTR/SAR exports use 2-digit (30-Jun-26),
+  // pivoted at 50 (26 → 2026, 99 → 1999). Full month names parse by
+  // 3-letter prefix.
   m = s.match(/^(\d{1,2})-([A-Za-z]+)-(\d+)$/);
   if (m) {
-    if (m[3].length !== 4) return null;
+    if (m[3].length !== 4 && m[3].length !== 2) return null;
+    const y = m[3].length === 2 ? +m[3] + (+m[3] < 50 ? 2000 : 1900) : +m[3];
     const mo = MONTH_NAMES.findIndex((n) => m[2].toLowerCase().startsWith(n.toLowerCase())) + 1;
-    return mo ? calendarDate(+m[3], mo, +m[1]) : null;
+    return mo ? calendarDate(y, mo, +m[1]) : null;
   }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;

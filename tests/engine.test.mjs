@@ -62,7 +62,11 @@ test('date parsing handles Verafin MM/DD/YYYY, DD-Mon-YYYY, and ISO formats', ()
   assert.equal(monthKey(parseDate(' 30-Jun-2026 ')), '2026-06'); // trimmed
   assert.equal(monthKey(parseDate('30-June-2026')), '2026-06');  // full month name
   assert.equal(parseDate('31-June-2026'), null); // no rollover via full name either
-  assert.equal(parseDate('30-Jun-26'), null);    // 2-digit year rejected (codex fix)
+  // CTR/SAR exports use 2-digit years: 30-Jun-26, 5-Feb-26 (century pivot at 50)
+  assert.equal(monthKey(parseDate('30-Jun-26')), '2026-06');
+  assert.equal(monthKey(parseDate('5-Feb-26')), '2026-02');
+  assert.equal(parseDate('31-Jun-26'), null);    // rollover still rejected
+  assert.equal(parseDate('30-Jun-206'), null);   // 3-digit year rejected
 });
 
 test('near-miss date strings never reach the rollover-prone fallback (codex fix)', () => {
