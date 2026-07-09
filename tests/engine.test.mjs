@@ -88,6 +88,10 @@ test('near-miss date strings never reach the rollover-prone fallback (codex fix)
   // slash dates with 2-digit years are malformed, never century-guessed
   assert.equal(parseDate('02/31/26'), null);
   assert.equal(parseDate('5/6/26 8:00'), null);
+  // junk after the separator is rejected too — only HH:MM may follow
+  assert.equal(parseDate('2026-06-30Tjunk'), null);
+  assert.equal(parseDate('2026-06-30 abc'), null);
+  assert.equal(parseDate('06/30/2026 abc'), null);
 });
 
 test('invalid calendar dates are rejected, not rolled over (codex fix)', () => {

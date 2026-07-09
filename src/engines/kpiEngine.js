@@ -25,17 +25,18 @@ export function parseDate(value) {
   if (value == null) return null;
   const s = String(value).trim();
   if (!s) return null;
-  // Known formats terminate here (parsed or rejected) — only a trailing
-  // time component may follow the date, never arbitrary junk. Reaching the
-  // Date-constructor fallback with a near-miss would roll over invalid
-  // days and guess two-digit centuries.
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]|$)/);
+  // Known formats terminate here (parsed or rejected) — only an actual
+  // HH:MM time component may follow the date, never arbitrary junk.
+  // Reaching the Date-constructor fallback with a near-miss would roll
+  // over invalid days and guess two-digit centuries.
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]\d{1,2}:\d{2}|$)/);
   if (m) return calendarDate(+m[1], +m[2], +m[3]);
-  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s|$)/);
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) return null;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s\d{1,2}:\d{2}|$)/);
   if (m) return calendarDate(+m[3], +m[1], +m[2]);
-  // Slash dates only ever ship 4-digit years; anything else that looks like
-  // one is malformed — never let the Date fallback century-guess or roll it
-  // over (02/31/26 would otherwise become March 3, 2026).
+  // Anything else slash-shaped is malformed (2-digit year, junk suffix) —
+  // never let the Date fallback century-guess or roll it over (02/31/26
+  // would otherwise become March 3, 2026).
   if (/^\d{1,2}\/\d{1,2}\//.test(s)) return null;
   // Verafin DD-Mon format (engine-independent parse). Alerts exports use
   // 4-digit years (30-Jun-2026); CTR/SAR exports use 2-digit (30-Jun-26),
